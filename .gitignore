@@ -1,7 +1,6 @@
-# Environment
+# Environment - NEVER commit .env files (always use GitHub secrets in CI/CD)
 .env
-.env.production
-.env.local
+.env.*
 .env.*.local
 
 # Dependencies
@@ -43,4 +42,3 @@ coverage/
 .cache/
 .temp/
 tmp/
-.env.production
