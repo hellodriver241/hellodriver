@@ -139,7 +139,7 @@ export async function registerAuthRoutes(app: FastifyInstance) {
 
     try {
       // Verify the refresh token
-      const payload = app.jwt.verify(refresh_token);
+      const payload = app.jwt.verify(refresh_token) as any;
 
       // Ensure it's actually a refresh token
       if (payload.type !== 'refresh') {
@@ -147,7 +147,7 @@ export async function registerAuthRoutes(app: FastifyInstance) {
       }
 
       // Fetch user to ensure still active
-      const userWithProfile = await getUserWithProfile(payload.sub);
+      const userWithProfile = await getUserWithProfile(payload.sub as string);
       if (!userWithProfile) {
         throw errors.userNotFound();
       }
