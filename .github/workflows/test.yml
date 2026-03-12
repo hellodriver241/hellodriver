@@ -14,16 +14,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: './backend/package-lock.json'
+          cache: 'pnpm'
 
       - name: Install dependencies
-        working-directory: ./backend
-        run: npm install
+        run: pnpm install
 
       - name: Run integration tests against Supabase + Railway Redis
         working-directory: ./backend
@@ -33,7 +36,7 @@ jobs:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           NODE_ENV: test
-        run: npm test
+        run: pnpm test
 
       - name: Upload test results
         if: always()
