@@ -103,6 +103,15 @@ export async function verifyOTP(phone: string, code: string): Promise<VerifyOtpR
 }
 
 /**
+ * Get OTP for testing purposes only
+ * DO NOT expose in production - only for integration tests
+ */
+export function getOTPForTesting(phone: string): string | undefined {
+  const stored = otpStore.get(phone);
+  return stored?.code;
+}
+
+/**
  * D7 Networks integration (future)
  * Awaiting API key approval
  */

@@ -3,6 +3,7 @@ import request from 'supertest';
 import { createApp } from '../src/core/app';
 import { registerRoutes } from '../src/routes';
 import { initializeDatabase, closeDatabase } from '../src/db/index';
+import { getOTPForTesting } from '../src/domains/sms/sms.service';
 import type { FastifyInstance } from 'fastify';
 
 let app: FastifyInstance;
@@ -67,19 +68,15 @@ describe('Driver Authentication Integration Tests', () => {
         .send({ phone: testPhone });
 
       expect(response.status).toBe(200);
+      expect(response.body).toHaveProperty('message');
+      expect(response.body.phone).toBe(testPhone);
 
-      // In development mode, OTP is returned in response
-      if (response.body.code) {
-        testOtp = response.body.code;
-      }
+      // Get OTP from in-memory store for testing
+      testOtp = getOTPForTesting(testPhone) || '';
+      expect(testOtp).toBeTruthy();
     });
 
     it('should verify OTP and create driver account', async () => {
-      if (!testOtp) {
-        console.warn('OTP not available, skipping verification test');
-        return;
-      }
-
       const response = await request(app.server)
         .post('/auth/verify-otp-and-signup')
         .send({
@@ -91,11 +88,15 @@ describe('Driver Authentication Integration Tests', () => {
           email: 'driver@hellodriver.ga',
         });
 
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(201); // 201 Created
       expect(response.body).toHaveProperty('user');
       expect(response.body).toHaveProperty('session');
       expect(response.body.user.role).toBe('driver');
+      expect(response.body.user.phone).toBe(testPhone);
       expect(response.body.session).toHaveProperty('access_token');
+      expect(response.body.session).toHaveProperty('refresh_token');
+      expect(response.body.session).toHaveProperty('expires_in');
+      expect(response.body.session.expires_in).toBe(900); // 15 minutes
 
       // Save for subsequent tests
       userId = response.body.user.id;
@@ -121,17 +122,14 @@ describe('Driver Authentication Integration Tests', () => {
 
   describe('GET /auth/me', () => {
     it('should return authenticated user', async () => {
-      if (!token) {
-        console.warn('Token not available, skipping auth test');
-        return;
-      }
-
       const response = await request(app.server)
         .get('/auth/me')
         .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(200);
       expect(response.body).toHaveProperty('user');
+      expect(response.body).toHaveProperty('profile');
+      expect(response.body).toHaveProperty('profileType');
       expect(response.body.user.phone).toBe('+241072123456');
     });
 
@@ -145,11 +143,6 @@ describe('Driver Authentication Integration Tests', () => {
 
   describe('POST /drivers/profile', () => {
     it('should complete driver profile', async () => {
-      if (!token) {
-        console.warn('Token not available, skipping profile test');
-        return;
-      }
-
       const response = await request(app.server)
         .post('/drivers/profile')
         .set('Authorization', `Bearer ${token}`)
@@ -204,11 +197,6 @@ describe('Driver Authentication Integration Tests', () => {
 
   describe('GET /drivers/verification-status', () => {
     it('should return verification status (0/3 docs)', async () => {
-      if (!token) {
-        console.warn('Token not available, skipping verification status test');
-        return;
-      }
-
       const response = await request(app.server)
         .get('/drivers/verification-status')
         .set('Authorization', `Bearer ${token}`);
@@ -224,11 +212,6 @@ describe('Driver Authentication Integration Tests', () => {
 
   describe('POST /drivers/documents/upload', () => {
     it('should upload drivers license document', async () => {
-      if (!token) {
-        console.warn('Token not available, skipping document upload test');
-        return;
-      }
-
       // Note: This test requires actual file upload
       // In real tests, you would use a test fixture file
       const response = await request(app.server)
@@ -259,11 +242,6 @@ describe('Driver Authentication Integration Tests', () => {
 
   describe('GET /drivers/documents', () => {
     it('should list driver documents', async () => {
-      if (!token) {
-        console.warn('Token not available, skipping documents list test');
-        return;
-      }
-
       const response = await request(app.server)
         .get('/drivers/documents')
         .set('Authorization', `Bearer ${token}`);
