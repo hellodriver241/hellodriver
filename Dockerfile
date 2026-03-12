@@ -29,12 +29,9 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Copy entire app directory including node_modules and built output
-# This preserves the monorepo structure with all symlinks intact
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/backend/dist ./backend/dist
-COPY --from=builder /app/backend/package.json ./backend/package.json
-COPY --from=builder /app/package.json ./package.json
+# Copy ENTIRE /app directory from builder to preserve all symlinks and pnpm structure
+# This is simpler and more reliable than trying to cherry-pick files
+COPY --from=builder /app /app
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
