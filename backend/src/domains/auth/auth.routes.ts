@@ -110,7 +110,7 @@ export async function registerAuthRoutes(app: FastifyInstance) {
    * Get current authenticated user
    */
   app.get('/auth/me', { onRequest: [authenticate] }, async (request: FastifyRequest) => {
-    const result = await getUserWithProfile((request.user as any).sub);
+    const result = await getUserWithProfile(request.user!.sub);
 
     if (!result) {
       throw errors.userNotFound();
@@ -129,7 +129,7 @@ export async function registerAuthRoutes(app: FastifyInstance) {
     async (request: FastifyRequest) => {
       const data = profileUpdateSchema.parse(request.body);
 
-      const user = await updateUser((request.user as any).sub, data);
+      const user = await updateUser(request.user!.sub, data);
 
       if (!user) {
         throw errors.userNotFound();

@@ -57,7 +57,7 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
 export async function requireAdmin(request: FastifyRequest, reply: FastifyReply) {
   await authenticate(request, reply);
 
-  const user = request.user as any;
+  const user = request.user!;
   if (user.role !== 'admin') {
     throw errors.accessDenied();
   }
@@ -69,7 +69,7 @@ export async function requireAdmin(request: FastifyRequest, reply: FastifyReply)
 export async function requireDriver(request: FastifyRequest, reply: FastifyReply) {
   await authenticate(request, reply);
 
-  const user = request.user as any;
+  const user = request.user!;
   if (user.role !== 'driver') {
     throw errors.accessDenied();
   }
@@ -81,7 +81,7 @@ export async function requireDriver(request: FastifyRequest, reply: FastifyReply
 export async function requireClient(request: FastifyRequest, reply: FastifyReply) {
   await authenticate(request, reply);
 
-  const user = request.user as any;
+  const user = request.user!;
   if (user.role !== 'client') {
     throw errors.accessDenied();
   }
