@@ -2,8 +2,8 @@ import { defineConfig } from 'vitest/config';
 import dotenv from 'dotenv';
 import path from 'path';
 
-// Load .env.test before tests run
-dotenv.config({ path: path.resolve(__dirname, '.env.test') });
+// Load .env.test before tests run (but don't override existing env vars from GitHub Actions)
+dotenv.config({ path: path.resolve(__dirname, '.env.test'), override: false });
 
 export default defineConfig({
   test: {
