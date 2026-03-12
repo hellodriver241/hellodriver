@@ -46,8 +46,13 @@ export async function createUser(
   }
 
   return {
-    ...user,
+    id: user.id,
+    authId: user.authId,
     role: user.role as 'client' | 'driver' | 'admin',
+    phone: user.phone,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    email: user.email || undefined,
     createdAt: user.createdAt || new Date(),
     updatedAt: user.updatedAt || new Date(),
   } as User;
@@ -66,8 +71,13 @@ export async function getUser(authId: string): Promise<User | undefined> {
   if (!user) return undefined;
 
   return {
-    ...user,
+    id: user.id,
+    authId: user.authId,
     role: user.role as 'client' | 'driver' | 'admin',
+    phone: user.phone,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    email: user.email || undefined,
     createdAt: user.createdAt || new Date(),
     updatedAt: user.updatedAt || new Date(),
   } as User;
@@ -86,8 +96,13 @@ export async function getUserWithProfile(userId: string) {
   if (!user) return null;
 
   const userTyped: User = {
-    ...user,
+    id: user.id,
+    authId: user.authId,
     role: user.role as 'client' | 'driver' | 'admin',
+    phone: user.phone,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    email: user.email || undefined,
     createdAt: user.createdAt || new Date(),
     updatedAt: user.updatedAt || new Date(),
   };
@@ -153,8 +168,13 @@ export async function getUserByPhone(phone: string): Promise<User | undefined> {
   if (!user) return undefined;
 
   return {
-    ...user,
+    id: user.id,
+    authId: user.authId,
     role: user.role as 'client' | 'driver' | 'admin',
+    phone: user.phone,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    email: user.email || undefined,
     createdAt: user.createdAt || new Date(),
     updatedAt: user.updatedAt || new Date(),
   } as User;
