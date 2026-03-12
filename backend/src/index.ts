@@ -18,9 +18,12 @@ await app.register(cors, {
   credentials: true,
 });
 
-await app.register(jwt, {
-  secret: process.env.SUPABASE_JWT_SECRET || '',
-});
+// Only register JWT if secret is provided
+if (process.env.SUPABASE_JWT_SECRET) {
+  await app.register(jwt, {
+    secret: process.env.SUPABASE_JWT_SECRET,
+  });
+}
 
 // Health check endpoint
 app.get('/health', async (request, reply) => {
