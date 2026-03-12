@@ -7,6 +7,7 @@ import type { User, DriverProfile, ClientProfile } from './auth.types.js';
 /**
  * Create a new user with role-specific profile
  * Handles race condition: if phone already exists, returns existing user instead of erroring
+ * Uses database transaction to ensure atomic user + profile creation
  */
 export async function createUser(
   authId: string,
@@ -19,45 +20,47 @@ export async function createUser(
   const db = getDatabase();
 
   try {
-    const [user] = await db
-      .insert(users)
-      .values({
-        authId,
-        role,
-        phone,
-        firstName,
-        lastName,
-        email,
-      })
-      .returning();
+    return await db.transaction(async (tx) => {
+      const [user] = await tx
+        .insert(users)
+        .values({
+          authId,
+          role,
+          phone,
+          firstName,
+          lastName,
+          email,
+        })
+        .returning();
 
-    if (!user) {
-      throw new Error('Failed to create user');
-    }
+      if (!user) {
+        throw new Error('Failed to create user');
+      }
 
-    // Create role-specific profile
-    if (role === 'client') {
-      await db.insert(clientProfiles).values({
-        userId: user.id,
-        phoneVerified: true,
-      });
-    } else {
-      await db.insert(driverProfiles).values({
-        userId: user.id,
-      });
-    }
+      // Create role-specific profile
+      if (role === 'client') {
+        await tx.insert(clientProfiles).values({
+          userId: user.id,
+          phoneVerified: true,
+        });
+      } else {
+        await tx.insert(driverProfiles).values({
+          userId: user.id,
+        });
+      }
 
-    return {
-      id: user.id,
-      authId: user.authId,
-      role: user.role as 'client' | 'driver' | 'admin',
-      phone: user.phone,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      email: user.email || undefined,
-      createdAt: user.createdAt || new Date(),
-      updatedAt: user.updatedAt || new Date(),
-    } as User;
+      return {
+        id: user.id,
+        authId: user.authId,
+        role: user.role as 'client' | 'driver' | 'admin',
+        phone: user.phone,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email || undefined,
+        createdAt: user.createdAt || new Date(),
+        updatedAt: user.updatedAt || new Date(),
+      } as User;
+    });
   } catch (err) {
     // Handle race condition: if phone already exists due to concurrent request,
     // fetch and return the existing user instead of failing
