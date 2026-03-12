@@ -17,10 +17,10 @@ export async function createUser(
   lastName: string,
   email?: string
 ): Promise<User> {
-  const db = getDatabase();
+  const db = getDatabase() as any;
 
   try {
-    return await db.transaction(async (tx) => {
+    return await db.transaction(async (tx: any) => {
       const [user] = await tx
         .insert(users)
         .values({
@@ -79,7 +79,7 @@ export async function createUser(
  * Get user by authId
  */
 export async function getUser(authId: string): Promise<User | undefined> {
-  const db = getDatabase();
+  const db = getDatabase() as any;
 
   const user = await db.query.users.findFirst({
     where: eq(users.authId, authId),
@@ -104,7 +104,7 @@ export async function getUser(authId: string): Promise<User | undefined> {
  * Get user with role-specific profile by userId
  */
 export async function getUserWithProfile(userId: string) {
-  const db = getDatabase();
+  const db = getDatabase() as any;
 
   const user = await db.query.users.findFirst({
     where: eq(users.id, userId),
@@ -148,7 +148,7 @@ export async function updateUser(
     email?: string;
   }
 ) {
-  const db = getDatabase();
+  const db = getDatabase() as any;
 
   const [updated] = await db
     .update(users)
@@ -163,7 +163,7 @@ export async function updateUser(
  * Check if phone already exists
  */
 export async function phoneExists(phone: string): Promise<boolean> {
-  const db = getDatabase();
+  const db = getDatabase() as any;
 
   const user = await db.query.users.findFirst({
     where: eq(users.phone, phone),
@@ -176,7 +176,7 @@ export async function phoneExists(phone: string): Promise<boolean> {
  * Get user by phone number
  */
 export async function getUserByPhone(phone: string): Promise<User | undefined> {
-  const db = getDatabase();
+  const db = getDatabase() as any;
 
   const user = await db.query.users.findFirst({
     where: eq(users.phone, phone),

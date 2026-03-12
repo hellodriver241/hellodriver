@@ -74,7 +74,7 @@ export const driverProfileSchema = z.object({
     .trim()
     .min(2, 'Residential area must be at least 2 characters')
     .max(100, 'Residential area must be at most 100 characters'),
-  hasAc: z.boolean('AC availability must be true or false'),
+  hasAc: z.boolean().describe('AC availability'),
   mobileMoneyAccount: z
     .string()
     .trim()

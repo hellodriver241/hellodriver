@@ -20,7 +20,7 @@ export async function updateDriverProfile(
     mobileMoneyAccount: string;
   }
 ): Promise<DriverProfile> {
-  const db = getDatabase();
+  const db = getDatabase() as any;
 
   const [driver] = await db
     .update(driverProfiles)
@@ -49,7 +49,7 @@ export async function updateDriverProfile(
  * Get driver profile
  */
 export async function getDriverProfile(userId: string): Promise<DriverProfile | undefined> {
-  const db = getDatabase();
+  const db = getDatabase() as any;
 
   const profile = await db.query.driverProfiles.findFirst({
     where: eq(driverProfiles.userId, userId),
@@ -66,7 +66,7 @@ export async function recordDocumentUpload(
   documentType: string,
   storageUrl: string
 ) {
-  const db = getDatabase();
+  const db = getDatabase() as any;
 
   // Delete existing document of same type if present
   await db
@@ -104,7 +104,7 @@ export async function recordDocumentUpload(
  * Get all documents for a driver
  */
 export async function getDriverDocuments(userId: string): Promise<DriverDocument[]> {
-  const db = getDatabase();
+  const db = getDatabase() as any;
 
   const docs = await db.query.driverDocuments.findMany({
     where: eq(driverDocuments.userId, userId),
@@ -117,7 +117,7 @@ export async function getDriverDocuments(userId: string): Promise<DriverDocument
  * Get verification status for a driver
  */
 export async function getVerificationStatus(userId: string): Promise<VerificationStatus> {
-  const db = getDatabase();
+  const db = getDatabase() as any;
 
   const profile = await db.query.driverProfiles.findFirst({
     where: eq(driverProfiles.userId, userId),
@@ -127,7 +127,7 @@ export async function getVerificationStatus(userId: string): Promise<Verificatio
     where: eq(driverDocuments.userId, userId),
   });
 
-  const verifiedDocsCount = docs.filter((doc) => doc.uploadStatus === 'verified').length;
+  const verifiedDocsCount = docs.filter((doc: any) => doc.uploadStatus === 'verified').length;
 
   return {
     isVerified: profile?.isVerified || false,
@@ -144,7 +144,7 @@ export async function getVerificationStatus(userId: string): Promise<Verificatio
  * Admin: List all drivers pending verification
  */
 export async function getPendingDrivers(): Promise<DriverProfile[]> {
-  const db = getDatabase();
+  const db = getDatabase() as any;
 
   const drivers = await db.query.driverProfiles.findMany({
     where: eq(driverProfiles.verificationStatus, 'pending'),
@@ -157,9 +157,9 @@ export async function getPendingDrivers(): Promise<DriverProfile[]> {
  * Admin: Approve a single document
  */
 export async function approveDocument(docId: string, adminId: string): Promise<DriverDocument> {
-  const db = getDatabase();
+  const db = getDatabase() as any;
 
-  return db.transaction(async (trx) => {
+  return db.transaction(async (trx: any) => {
     // Update document status
     const [doc] = await trx
       .update(driverDocuments)
@@ -190,7 +190,7 @@ export async function approveDocument(docId: string, adminId: string): Promise<D
       where: eq(driverDocuments.userId, doc.userId),
     });
 
-    const verifiedCount = allDocs.filter((d) => d.uploadStatus === 'verified').length;
+    const verifiedCount = allDocs.filter((d: any) => d.uploadStatus === 'verified').length;
 
     if (verifiedCount === 3) {
       // All docs approved - mark driver as fully verified
@@ -227,9 +227,9 @@ export async function rejectDocument(
   adminId: string,
   reason: string
 ): Promise<DriverDocument> {
-  const db = getDatabase();
+  const db = getDatabase() as any;
 
-  return db.transaction(async (trx) => {
+  return db.transaction(async (trx: any) => {
     // Update document status
     const [doc] = await trx
       .update(driverDocuments)

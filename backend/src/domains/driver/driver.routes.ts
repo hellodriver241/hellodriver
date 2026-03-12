@@ -31,7 +31,7 @@ export async function registerDriverRoutes(app: FastifyInstance) {
     { onRequest: [requireDriver] },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const data = driverProfileSchema.parse(request.body);
-      const userId = request.user!.sub;
+      const userId = (request.user as any).sub;
 
       try {
         const driver = await updateDriverProfile(userId, data);
@@ -70,7 +70,7 @@ export async function registerDriverRoutes(app: FastifyInstance) {
     '/drivers/documents/upload',
     { onRequest: [requireDriver] },
     async (request: FastifyRequest, reply: FastifyReply) => {
-      const userId = request.user!.sub;
+      const userId = (request.user as any).sub;
 
       const file = await request.file();
       if (!file) {
@@ -106,7 +106,7 @@ export async function registerDriverRoutes(app: FastifyInstance) {
     '/drivers/documents',
     { onRequest: [requireDriver] },
     async (request: FastifyRequest, reply: FastifyReply) => {
-      const userId = request.user!.sub;
+      const userId = (request.user as any).sub;
 
       const docs = await getDriverDocuments(userId);
 
@@ -125,7 +125,7 @@ export async function registerDriverRoutes(app: FastifyInstance) {
     '/drivers/verification-status',
     { onRequest: [requireDriver] },
     async (request: FastifyRequest, reply: FastifyReply) => {
-      const userId = request.user!.sub;
+      const userId = (request.user as any).sub;
 
       const status = await getVerificationStatus(userId);
 
@@ -186,7 +186,7 @@ export async function registerDriverRoutes(app: FastifyInstance) {
     { onRequest: [requireAdmin] },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { docId } = request.params as { docId: string };
-      const adminId = request.user!.sub;
+      const adminId = (request.user as any).sub;
 
       try {
         const doc = await approveDocument(docId, adminId);
@@ -212,7 +212,7 @@ export async function registerDriverRoutes(app: FastifyInstance) {
     { onRequest: [requireAdmin] },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { docId } = request.params as { docId: string };
-      const adminId = request.user!.sub;
+      const adminId = (request.user as any).sub;
       const { rejectionReason } = adminDocumentActionSchema.parse(request.body);
 
       if (!rejectionReason) {
