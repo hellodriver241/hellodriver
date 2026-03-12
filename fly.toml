@@ -1,9 +1,6 @@
 app = "hellodriver-main"
 primary_region = "jnb"
 
-[build]
-builder = "docker"
-
 [env]
 NODE_ENV = "production"
 PORT = "3000"
