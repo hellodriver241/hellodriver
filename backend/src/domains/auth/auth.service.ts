@@ -11,7 +11,7 @@ import type { User, DriverProfile, ClientProfile } from './auth.types.js';
  */
 export async function createUser(
   authId: string,
-  role: 'client' | 'driver',
+  role: 'client' | 'driver' | 'admin',
   phone: string,
   firstName: string,
   lastName: string,
@@ -37,17 +37,18 @@ export async function createUser(
         throw new Error('Failed to create user');
       }
 
-      // Create role-specific profile
+      // Create role-specific profile (skip for admin users)
       if (role === 'client') {
         await tx.insert(clientProfiles).values({
           userId: user.id,
           phoneVerified: true,
         });
-      } else {
+      } else if (role === 'driver') {
         await tx.insert(driverProfiles).values({
           userId: user.id,
         });
       }
+      // 'admin' role does not get a profile
 
       return {
         id: user.id,
@@ -129,11 +130,14 @@ export async function getUserWithProfile(userId: string) {
       where: eq(clientProfiles.userId, user.id),
     });
     return { user: userTyped, profile, profileType: 'client' as const };
-  } else {
+  } else if (user.role === 'driver') {
     const profile = await db.query.driverProfiles.findFirst({
       where: eq(driverProfiles.userId, user.id),
     });
     return { user: userTyped, profile, profileType: 'driver' as const };
+  } else {
+    // admin user - no profile
+    return { user: userTyped, profile: null, profileType: 'admin' as const };
   }
 }
 
