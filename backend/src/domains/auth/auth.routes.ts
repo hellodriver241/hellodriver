@@ -82,17 +82,24 @@ export async function registerAuthRoutes(app: FastifyInstance) {
           throw errors.internalError('Failed to create user');
         }
 
-        // Sign JWT token
-        const token = app.jwt.sign(
-          { sub: user.id, role: user.role, phone: user.phone },
+        // Sign access token (short-lived: 15 minutes)
+        const accessToken = app.jwt.sign(
+          { sub: user.id, role: user.role, phone: user.phone, type: 'access' },
+          { expiresIn: '15m' }
+        );
+
+        // Sign refresh token (long-lived: 7 days)
+        const refreshToken = app.jwt.sign(
+          { sub: user.id, role: user.role, phone: user.phone, type: 'refresh' },
           { expiresIn: '7d' }
         );
 
-        return reply.code(200).send({
+        return reply.code(201).send({
           user,
           session: {
-            access_token: token,
-            refresh_token: token, // TODO: Implement refresh token rotation
+            access_token: accessToken,
+            refresh_token: refreshToken,
+            expires_in: 900, // 15 minutes in seconds
           },
         });
       } catch (err) {
@@ -117,6 +124,51 @@ export async function registerAuthRoutes(app: FastifyInstance) {
     }
 
     return result;
+  });
+
+  /**
+   * POST /auth/refresh
+   * Refresh access token using refresh token
+   */
+  app.post('/auth/refresh', async (request: FastifyRequest, reply: FastifyReply) => {
+    const { refresh_token } = request.body as { refresh_token?: string };
+
+    if (!refresh_token) {
+      throw errors.validationFailed({ refresh_token: 'Refresh token is required' });
+    }
+
+    try {
+      // Verify the refresh token
+      const payload = app.jwt.verify(refresh_token);
+
+      // Ensure it's actually a refresh token
+      if (payload.type !== 'refresh') {
+        throw errors.unauthorized();
+      }
+
+      // Fetch user to ensure still active
+      const userWithProfile = await getUserWithProfile(payload.sub);
+      if (!userWithProfile) {
+        throw errors.userNotFound();
+      }
+      const user = userWithProfile.user;
+
+      // Issue new access token
+      const accessToken = app.jwt.sign(
+        { sub: user.id, role: user.role, phone: user.phone, type: 'access' },
+        { expiresIn: '15m' }
+      );
+
+      return reply.code(200).send({
+        access_token: accessToken,
+        expires_in: 900, // 15 minutes in seconds
+      });
+    } catch (err) {
+      if (err instanceof Error && 'statusCode' in err && 'code' in err) {
+        throw err;
+      }
+      throw errors.unauthorized();
+    }
   });
 
   /**

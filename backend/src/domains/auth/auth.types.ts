@@ -52,6 +52,7 @@ export interface JwtPayload {
   sub: string;
   role: 'client' | 'driver' | 'admin';
   phone: string;
+  type: 'access' | 'refresh'; // Token type for validation
   iat?: number;
   exp?: number;
 }
