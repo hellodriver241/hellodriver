@@ -41,7 +41,7 @@ jobs:
           NODE_ENV: test
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           SUPABASE_JWT_SECRET: ${{ secrets.SUPABASE_JWT_SECRET }}
           PAWAPAY_API_KEY: ${{ secrets.PAWAPAY_API_KEY }}
           PAWAPAY_BASE_URL: https://staging-api.pawapay.io
