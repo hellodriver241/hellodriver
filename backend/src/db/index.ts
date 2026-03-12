@@ -3,6 +3,7 @@ import { Pool } from 'pg';
 import * as schema from './schema.js';
 
 let pool: Pool | null = null;
+let db: ReturnType<typeof drizzle> | null = null;
 
 export function initializeDatabase() {
   if (pool) return pool;
@@ -17,20 +18,24 @@ export function initializeDatabase() {
     ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
   });
 
+  // Cache Drizzle instance with the pool
+  db = drizzle(pool, { schema });
+
   return pool;
 }
 
 export function getDatabase() {
-  if (!pool) {
+  if (!db) {
     initializeDatabase();
   }
-  return drizzle(pool!, { schema });
+  return db!;
 }
 
 export function closeDatabase() {
   if (pool) {
     pool.end();
     pool = null;
+    db = null;
   }
 }
 
