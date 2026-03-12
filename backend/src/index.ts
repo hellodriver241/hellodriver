@@ -1,6 +1,7 @@
 import { initializeDatabase } from './db/index.js';
 import { createApp } from './core/app.js';
 import { registerRoutes } from './routes.js';
+import { config } from './core/config.js';
 
 const start = async () => {
   try {
@@ -16,11 +17,8 @@ const start = async () => {
     console.log('✓ Routes registered');
 
     // Start server
-    const port = process.env.PORT || '3000';
-    const host = process.env.HOST || '0.0.0.0';
-
-    await app.listen({ port: parseInt(port as string, 10), host });
-    console.log(`✓ Server running at http://${host}:${port}`);
+    await app.listen({ port: config.PORT, host: config.HOST });
+    console.log(`✓ Server running at http://${config.HOST}:${config.PORT}`);
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
     console.error(`✗ Failed to start server: ${errorMessage}`);
