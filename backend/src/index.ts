@@ -1,6 +1,6 @@
 import Fastify from 'fastify';
-import cors from 'fastify-cors';
-import jwt from 'fastify-jwt';
+import cors from '@fastify/cors';
+import jwt from '@fastify/jwt';
 import { config } from 'dotenv';
 
 // Load environment variables

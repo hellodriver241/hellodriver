@@ -14,19 +14,19 @@
     "format": "prettier --write src"
   },
   "dependencies": {
-    "fastify": "^4.25.2",
-    "fastify-cors": "^8.4.2",
-    "fastify-jwt": "^7.2.4",
-    "fastify-plugin": "^4.5.1",
-    "pg": "^8.11.3",
-    "redis": "^4.6.12",
-    "bullmq": "^5.2.6",
-    "socket.io": "^4.7.2",
-    "@supabase/supabase-js": "^2.38.4",
-    "zod": "^3.22.4",
-    "dotenv": "^16.3.1",
-    "pino": "^8.17.2",
-    "pino-pretty": "^10.3.1"
+    "fastify": "latest",
+    "@fastify/cors": "latest",
+    "@fastify/jwt": "latest",
+    "fastify-plugin": "latest",
+    "pg": "latest",
+    "redis": "latest",
+    "bullmq": "latest",
+    "socket.io": "latest",
+    "@supabase/supabase-js": "latest",
+    "zod": "latest",
+    "dotenv": "latest",
+    "pino": "latest",
+    "pino-pretty": "latest"
   },
   "devDependencies": {
     "@types/node": "^20.10.6",
