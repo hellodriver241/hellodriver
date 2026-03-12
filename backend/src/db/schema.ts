@@ -7,6 +7,8 @@ import {
   varchar,
   integer,
   date,
+  numeric,
+  geometry,
 } from 'drizzle-orm/pg-core';
 
 export const users = pgTable('users', {
@@ -70,5 +72,30 @@ export const driverVerificationLog = pgTable('driver_verification_log', {
   action: text('action').notNull(), // 'doc_uploaded' | 'doc_approved' | 'doc_rejected' | 'driver_approved' | 'driver_rejected'
   adminId: uuid('admin_id').references(() => users.id),
   details: text('details'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+});
+
+export const driverLocations = pgTable('driver_locations', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().unique().references(() => users.id),
+  latitude: numeric('latitude', { precision: 10, scale: 7 }).notNull(),
+  longitude: numeric('longitude', { precision: 10, scale: 7 }).notNull(),
+  geom: geometry('geom', { type: 'point', mode: 'xy', srid: 4326 }).notNull(),
+  isOnline: boolean('is_online').default(false),
+  isAvailable: boolean('is_available').default(false),
+  lastHeartbeat: timestamp('last_heartbeat', { withTimezone: true }).defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+});
+
+export const tripLocationPings = pgTable('trip_location_pings', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tripId: uuid('trip_id').notNull(),
+  driverId: uuid('driver_id').notNull().references(() => users.id),
+  latitude: numeric('latitude', { precision: 10, scale: 7 }).notNull(),
+  longitude: numeric('longitude', { precision: 10, scale: 7 }).notNull(),
+  geom: geometry('geom', { type: 'point', mode: 'xy', srid: 4326 }).notNull(),
+  speed: numeric('speed', { precision: 5, scale: 2 }),
+  bearing: numeric('bearing', { precision: 5, scale: 2 }),
+  accuracy: numeric('accuracy', { precision: 5, scale: 2 }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });

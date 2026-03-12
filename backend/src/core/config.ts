@@ -4,6 +4,7 @@
 
 const requiredEnvVars = [
   'DATABASE_URL',
+  'REDIS_URL',
   'SUPABASE_URL',
   'SUPABASE_SERVICE_ROLE_KEY',
   'NODE_ENV',
@@ -29,6 +30,7 @@ export const config = {
 
   // Database
   DATABASE_URL: process.env.DATABASE_URL!,
+  REDIS_URL: process.env.REDIS_URL!,
 
   // Auth
   JWT_SECRET: jwtSecret,

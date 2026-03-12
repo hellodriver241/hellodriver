@@ -7,6 +7,10 @@ import {
   adminDriverRejectionSchema,
 } from './driver.validators.js';
 import {
+  locationUpdateSchema,
+  onlineToggleSchema,
+} from './location.validators.js';
+import {
   updateDriverProfile,
   getDriverProfile,
   recordDocumentUpload,
@@ -18,6 +22,11 @@ import {
   approveDriver,
   rejectDriver,
 } from './driver.service.js';
+import {
+  updateDriverLocation,
+  toggleDriverOnlineStatus,
+  getDriverLocation,
+} from './location.service.js';
 import { authenticate, requireDriver, requireAdmin } from '../../shared/errors/handlers.js';
 import { errors } from '../../shared/errors/AppError.js';
 import { uploadFile, deleteFile } from '../../domains/storage/storage.service.js';
@@ -134,6 +143,84 @@ export async function registerDriverRoutes(app: FastifyInstance) {
       const status = await getVerificationStatus(userId);
 
       return reply.code(200).send(status);
+    }
+  );
+
+  /**
+   * POST /drivers/location
+   * Update driver GPS location (sent every 3s from mobile app)
+   * Stores in Redis for real-time matching + PostgreSQL for durability
+   */
+  app.post(
+    '/drivers/location',
+    { onRequest: [requireDriver] },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const userId = (request.user as any).sub;
+      const data = locationUpdateSchema.parse(request.body);
+
+      try {
+        const location = await updateDriverLocation(userId, data);
+        return reply.code(200).send({
+          success: true,
+          data: location,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        throw errors.internalError(message);
+      }
+    }
+  );
+
+  /**
+   * PATCH /drivers/toggle-online
+   * Toggle driver online/offline status
+   * Prevents going online if not verified
+   */
+  app.patch(
+    '/drivers/toggle-online',
+    { onRequest: [requireDriver] },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const userId = (request.user as any).sub;
+      const data = onlineToggleSchema.parse(request.body);
+
+      try {
+        const status = await toggleDriverOnlineStatus(userId, data);
+        return reply.code(200).send({
+          success: true,
+          data: status,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        throw errors.internalError(message);
+      }
+    }
+  );
+
+  /**
+   * GET /drivers/location
+   * Get current driver location
+   */
+  app.get(
+    '/drivers/location',
+    { onRequest: [requireDriver] },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const userId = (request.user as any).sub;
+
+      const location = await getDriverLocation(userId);
+
+      if (!location) {
+        return reply.code(200).send({
+          latitude: null,
+          longitude: null,
+          isOnline: false,
+        });
+      }
+
+      return reply.code(200).send({
+        latitude: location.latitude,
+        longitude: location.longitude,
+        isOnline: location.isOnline,
+      });
     }
   );
 

@@ -1,4 +1,5 @@
 import { initializeDatabase } from './db/index.js';
+import { initializeRedis } from './plugins/redis.js';
 import { createApp } from './core/app.js';
 import { registerRoutes } from './routes.js';
 import { config } from './core/config.js';
@@ -8,6 +9,9 @@ const start = async () => {
     // Initialize database
     initializeDatabase();
     console.log('✓ Database initialized');
+
+    // Initialize Redis
+    await initializeRedis();
 
     // Create app
     const app = await createApp();
