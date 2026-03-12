@@ -1,4 +1,4 @@
-app = "hellodriver-api"
+app = "hellodriver-main"
 primary_region = "jnb"
 
 [build]
