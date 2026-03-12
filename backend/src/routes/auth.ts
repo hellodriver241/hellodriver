@@ -8,17 +8,21 @@ export async function authRoutes(app: FastifyInstance) {
     const { phone } = signupSchema.pick({ phone: true }).parse(request.body);
 
     try {
-      // TODO: Integrate with Supabase Auth to send OTP
-      // const { error } = await app.supabase.auth.signInWithOtp({ phone });
+      const { error } = await app.supabase.auth.signInWithOtp({ phone });
 
-      // For now, return success message
+      if (error) {
+        app.log.error(`Supabase OTP error: ${error.message}`);
+        return reply.code(400).send({ error: { code: 'OTP_SEND_FAILED', message: error.message } });
+      }
+
       return reply.code(200).send({
         message: 'OTP sent to phone',
         phone,
       });
     } catch (err) {
-      app.log.error(err);
-      return reply.code(400).send({ error: 'Failed to send OTP' });
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      app.log.error(`OTP error: ${errorMessage}`);
+      return reply.code(500).send({ error: { code: 'INTERNAL_ERROR', message: 'Failed to send OTP' } });
     }
   });
 
@@ -30,30 +34,38 @@ export async function authRoutes(app: FastifyInstance) {
     const { phone, code, role, firstName, lastName, email } = bodySchema.parse(request.body);
 
     try {
-      // TODO: Integrate with Supabase Auth to verify OTP
-      // const { data, error } = await app.supabase.auth.verifyOtp({
-      //   phone,
-      //   token: code,
-      //   type: 'sms',
-      // });
+      const { data, error } = await app.supabase.auth.verifyOtp({
+        phone,
+        token: code,
+        type: 'sms',
+      });
 
-      // For now, mock the verification
-      const mockAuthId = '00000000-0000-0000-0000-000000000000'; // Mock UUID
+      if (error || !data.user) {
+        app.log.error(`OTP verification failed: ${error?.message || 'No user returned'}`);
+        return reply.code(400).send({ error: { code: 'INVALID_OTP', message: 'Invalid or expired OTP' } });
+      }
 
-      // Check if user exists
-      let user = await getUser(mockAuthId);
+      // data.user.id is the Supabase auth user ID
+      const authId = data.user.id;
+
+      // Check if user already exists in our database
+      let user = await getUser(authId);
       if (!user) {
-        user = await createUser(mockAuthId, role, phone, firstName, lastName, email);
+        // Create new user with role-specific profile
+        user = await createUser(authId, role, phone, firstName, lastName, email);
       }
 
       return reply.code(200).send({
         user,
-        token: 'mock-access-token', // Mock token
-        refreshToken: 'mock-refresh-token',
+        session: {
+          access_token: data.session?.access_token,
+          refresh_token: data.session?.refresh_token,
+        },
       });
     } catch (err) {
-      app.log.error(err);
-      return reply.code(400).send({ error: 'OTP verification failed' });
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      app.log.error(`Verification error: ${errorMessage}`);
+      return reply.code(500).send({ error: { code: 'INTERNAL_ERROR', message: 'OTP verification failed' } });
     }
   });
 

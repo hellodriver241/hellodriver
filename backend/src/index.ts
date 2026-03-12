@@ -6,6 +6,7 @@ import { config } from 'dotenv';
 import { initializeDatabase } from './db/index.js';
 import { authRoutes } from './routes/auth.js';
 import { driverRoutes } from './routes/driver.js';
+import supabasePlugin from './plugins/supabase.js';
 
 // Load environment variables
 config();
@@ -33,6 +34,9 @@ await app.register(cors, {
 });
 
 await app.register(multipart);
+
+// Register Supabase plugin for auth
+await app.register(supabasePlugin);
 
 // Type declaration for authenticate hook
 declare module 'fastify' {
