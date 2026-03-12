@@ -8,6 +8,7 @@ export interface OtpStore {
   expiresAt: Date;
   attempts: number;
   maxAttempts: number;
+  requestHistory: number[]; // Timestamps of OTP requests
 }
 
 export interface SendOtpResult {

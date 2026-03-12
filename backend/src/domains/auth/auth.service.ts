@@ -6,6 +6,7 @@ import type { User, DriverProfile, ClientProfile } from './auth.types.js';
 
 /**
  * Create a new user with role-specific profile
+ * Handles race condition: if phone already exists, returns existing user instead of erroring
  */
 export async function createUser(
   authId: string,
@@ -17,45 +18,58 @@ export async function createUser(
 ): Promise<User> {
   const db = getDatabase();
 
-  const [user] = await db
-    .insert(users)
-    .values({
-      authId,
-      role,
-      phone,
-      firstName,
-      lastName,
-      email,
-    })
-    .returning();
+  try {
+    const [user] = await db
+      .insert(users)
+      .values({
+        authId,
+        role,
+        phone,
+        firstName,
+        lastName,
+        email,
+      })
+      .returning();
 
-  if (!user) {
-    throw new Error('Failed to create user');
+    if (!user) {
+      throw new Error('Failed to create user');
+    }
+
+    // Create role-specific profile
+    if (role === 'client') {
+      await db.insert(clientProfiles).values({
+        userId: user.id,
+        phoneVerified: true,
+      });
+    } else {
+      await db.insert(driverProfiles).values({
+        userId: user.id,
+      });
+    }
+
+    return {
+      id: user.id,
+      authId: user.authId,
+      role: user.role as 'client' | 'driver' | 'admin',
+      phone: user.phone,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email || undefined,
+      createdAt: user.createdAt || new Date(),
+      updatedAt: user.updatedAt || new Date(),
+    } as User;
+  } catch (err) {
+    // Handle race condition: if phone already exists due to concurrent request,
+    // fetch and return the existing user instead of failing
+    if (err instanceof Error && 'code' in err && (err as any).code === '23505') {
+      // PostgreSQL unique constraint violation error code
+      const existingUser = await getUserByPhone(phone);
+      if (existingUser) {
+        return existingUser;
+      }
+    }
+    throw err;
   }
-
-  // Create role-specific profile
-  if (role === 'client') {
-    await db.insert(clientProfiles).values({
-      userId: user.id,
-      phoneVerified: true,
-    });
-  } else {
-    await db.insert(driverProfiles).values({
-      userId: user.id,
-    });
-  }
-
-  return {
-    id: user.id,
-    authId: user.authId,
-    role: user.role as 'client' | 'driver' | 'admin',
-    phone: user.phone,
-    firstName: user.firstName,
-    lastName: user.lastName,
-    email: user.email || undefined,
-    createdAt: user.createdAt || new Date(),
-    updatedAt: user.updatedAt || new Date(),
-  } as User;
 }
 
 /**

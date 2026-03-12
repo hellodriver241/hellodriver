@@ -40,7 +40,6 @@ export async function registerAuthRoutes(app: FastifyInstance) {
       return reply.code(200).send({
         message: 'OTP sent to phone',
         phone,
-        code: result.code, // Include OTP code for development/testing
       });
     } catch (err) {
       if (err instanceof Error && 'statusCode' in err && 'code' in err) {

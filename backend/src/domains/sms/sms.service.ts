@@ -16,6 +16,7 @@ function generateOTP(): string {
 
 /**
  * Send OTP to phone number
+ * Enforces rate limiting: max 3 requests per 15 minutes
  * Currently mocked to console, awaiting D7 Networks approval
  */
 export async function sendOTP(phone: string): Promise<SendOtpResult> {
@@ -23,8 +24,25 @@ export async function sendOTP(phone: string): Promise<SendOtpResult> {
     return { success: false, error: 'Invalid Gabon phone number format' };
   }
 
+  // Check rate limiting: max 3 requests per 15 minutes
+  const now = Date.now();
+  const fifteenMinutesAgo = now - 15 * 60 * 1000;
+
+  const stored = otpStore.get(phone);
+  const requestHistory = stored?.requestHistory ?? [];
+
+  // Clean up old requests outside the 15-minute window
+  const recentRequests = requestHistory.filter(timestamp => timestamp > fifteenMinutesAgo);
+
+  if (recentRequests.length >= 3) {
+    return {
+      success: false,
+      error: 'Too many OTP requests. Please try again later.',
+    };
+  }
+
   const code = generateOTP();
-  const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+  const expiresAt = new Date(now + 10 * 60 * 1000); // 10 minutes
 
   otpStore.set(phone, {
     code,
@@ -32,6 +50,7 @@ export async function sendOTP(phone: string): Promise<SendOtpResult> {
     expiresAt,
     attempts: 0,
     maxAttempts: 3,
+    requestHistory: [...recentRequests, now],
   });
 
   // Mock: Log to console in development/test
