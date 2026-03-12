@@ -11,6 +11,7 @@
     "lint": "pnpm -r run lint",
     "backend:dev": "cd backend && pnpm dev",
     "backend:build": "cd backend && pnpm build",
+    "backend:test": "cd backend && pnpm test",
     "backend:deploy": "cd backend && flyctl deploy"
   }
 }
