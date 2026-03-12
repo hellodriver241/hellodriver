@@ -11,7 +11,7 @@ export const driverProfileSchema = z.object({
   vehicleRegistration: z.string().min(1).max(50),
   residentialArea: z.string().min(1).max(100),
   hasAc: z.boolean(),
-  mobileMoneyAccount: z.string().regex(/^\+241[0-9]{7,8}$/, 'Invalid Gabon mobile money account format'),
+  mobileMoneyAccount: z.string().regex(/^\+241[0-9]{7,9}$/, 'Invalid Gabon mobile money account format'),
 });
 
 /**

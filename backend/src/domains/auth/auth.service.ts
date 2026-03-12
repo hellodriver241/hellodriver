@@ -74,32 +74,42 @@ export async function getUser(authId: string): Promise<User | undefined> {
 }
 
 /**
- * Get user with role-specific profile
+ * Get user with role-specific profile by userId
  */
-export async function getUserWithProfile(authId: string) {
+export async function getUserWithProfile(userId: string) {
   const db = getDatabase();
 
-  const user = await getUser(authId);
+  const user = await db.query.users.findFirst({
+    where: eq(users.id, userId),
+  });
+
   if (!user) return null;
+
+  const userTyped: User = {
+    ...user,
+    role: user.role as 'client' | 'driver' | 'admin',
+    createdAt: user.createdAt || new Date(),
+    updatedAt: user.updatedAt || new Date(),
+  };
 
   if (user.role === 'client') {
     const profile = await db.query.clientProfiles.findFirst({
       where: eq(clientProfiles.userId, user.id),
     });
-    return { user, profile, profileType: 'client' as const };
+    return { user: userTyped, profile, profileType: 'client' as const };
   } else {
     const profile = await db.query.driverProfiles.findFirst({
       where: eq(driverProfiles.userId, user.id),
     });
-    return { user, profile, profileType: 'driver' as const };
+    return { user: userTyped, profile, profileType: 'driver' as const };
   }
 }
 
 /**
- * Update user profile fields
+ * Update user profile fields by userId
  */
 export async function updateUser(
-  authId: string,
+  userId: string,
   updates: {
     firstName?: string;
     lastName?: string;
@@ -111,7 +121,7 @@ export async function updateUser(
   const [updated] = await db
     .update(users)
     .set({ ...updates, updatedAt: new Date() })
-    .where(eq(users.authId, authId))
+    .where(eq(users.id, userId))
     .returning();
 
   return updated;
