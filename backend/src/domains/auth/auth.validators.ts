@@ -15,7 +15,7 @@ const nameRegex = /^[a-zA-ZÀ-ÿ]([a-zA-ZÀ-ÿ\s\-']*[a-zA-ZÀ-ÿ])?$/;
 
 export const signupSchema = z.object({
   phone: z.string().trim().regex(gabonPhoneRegex, 'Invalid Gabon phone number. Use format: +241072123456'),
-  role: z.enum(['client', 'driver']),
+  role: z.enum(['client', 'driver', 'admin']),
   firstName: z.string()
     .trim()
     .min(2, 'First name must be at least 2 characters')

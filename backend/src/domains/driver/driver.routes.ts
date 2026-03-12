@@ -3,6 +3,8 @@ import {
   driverProfileSchema,
   documentUploadSchema,
   adminDocumentActionSchema,
+  adminDriverApprovalSchema,
+  adminDriverRejectionSchema,
 } from './driver.validators.js';
 import {
   updateDriverProfile,
@@ -13,6 +15,8 @@ import {
   getPendingDrivers,
   approveDocument,
   rejectDocument,
+  approveDriver,
+  rejectDriver,
 } from './driver.service.js';
 import { authenticate, requireDriver, requireAdmin } from '../../shared/errors/handlers.js';
 import { errors } from '../../shared/errors/AppError.js';
@@ -226,6 +230,60 @@ export async function registerDriverRoutes(app: FastifyInstance) {
           success: true,
           message: 'Document rejected',
           data: doc,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        throw errors.internalError(message);
+      }
+    }
+  );
+
+  /**
+   * PATCH /admin/drivers/:driverId/approve
+   * Manually approve entire driver
+   */
+  app.patch(
+    '/admin/drivers/:driverId/approve',
+    { onRequest: [requireAdmin] },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { driverId } = request.params as { driverId: string };
+      const adminId = (request.user as any).sub;
+      const { notes } = adminDriverApprovalSchema.parse(request.body);
+
+      try {
+        const driver = await approveDriver(driverId, adminId, notes);
+
+        return reply.code(200).send({
+          success: true,
+          message: 'Driver approved',
+          data: driver,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        throw errors.internalError(message);
+      }
+    }
+  );
+
+  /**
+   * PATCH /admin/drivers/:driverId/reject
+   * Manually reject entire driver
+   */
+  app.patch(
+    '/admin/drivers/:driverId/reject',
+    { onRequest: [requireAdmin] },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      const { driverId } = request.params as { driverId: string };
+      const adminId = (request.user as any).sub;
+      const { reason } = adminDriverRejectionSchema.parse(request.body);
+
+      try {
+        const driver = await rejectDriver(driverId, adminId, reason);
+
+        return reply.code(200).send({
+          success: true,
+          message: 'Driver rejected',
+          data: driver,
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';

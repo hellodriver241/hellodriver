@@ -99,6 +99,30 @@ export const adminDocumentActionSchema = z.object({
     .optional(),
 });
 
+/**
+ * Admin driver approval schema (manual approval)
+ */
+export const adminDriverApprovalSchema = z.object({
+  notes: z
+    .string()
+    .trim()
+    .max(500, 'Approval notes must be at most 500 characters')
+    .optional(),
+});
+
+/**
+ * Admin driver rejection schema
+ */
+export const adminDriverRejectionSchema = z.object({
+  reason: z
+    .string()
+    .trim()
+    .min(10, 'Rejection reason must be at least 10 characters')
+    .max(500, 'Rejection reason must be at most 500 characters'),
+});
+
 export type DriverProfileInput = z.infer<typeof driverProfileSchema>;
 export type DocumentUploadInput = z.infer<typeof documentUploadSchema>;
 export type AdminDocumentActionInput = z.infer<typeof adminDocumentActionSchema>;
+export type AdminDriverApprovalInput = z.infer<typeof adminDriverApprovalSchema>;
+export type AdminDriverRejectionInput = z.infer<typeof adminDriverRejectionSchema>;

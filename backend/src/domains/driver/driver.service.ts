@@ -259,3 +259,84 @@ export async function rejectDocument(
     return doc as DriverDocument;
   });
 }
+
+/**
+ * Admin: Manually approve entire driver (bypassing document requirements)
+ */
+export async function approveDriver(
+  userId: string,
+  adminId: string,
+  notes?: string
+): Promise<DriverProfile> {
+  const db = getDatabase() as any;
+
+  return db.transaction(async (trx: any) => {
+    // Update driver profile
+    const [driver] = await trx
+      .update(driverProfiles)
+      .set({
+        isVerified: true,
+        verificationStatus: 'approved',
+        verifiedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(driverProfiles.userId, userId))
+      .returning();
+
+    if (!driver) {
+      throw new Error('Driver profile not found');
+    }
+
+    // Log action
+    await trx.insert(driverVerificationLog).values({
+      id: uuidv4(),
+      userId,
+      action: 'driver_approved' as const,
+      adminId,
+      details: notes || 'Driver manually approved by admin',
+      createdAt: new Date(),
+    });
+
+    return driver as DriverProfile;
+  });
+}
+
+/**
+ * Admin: Manually reject entire driver
+ */
+export async function rejectDriver(
+  userId: string,
+  adminId: string,
+  reason: string
+): Promise<DriverProfile> {
+  const db = getDatabase() as any;
+
+  return db.transaction(async (trx: any) => {
+    // Update driver profile
+    const [driver] = await trx
+      .update(driverProfiles)
+      .set({
+        isVerified: false,
+        verificationStatus: 'rejected',
+        updatedAt: new Date(),
+      })
+      .where(eq(driverProfiles.userId, userId))
+      .returning();
+
+    if (!driver) {
+      throw new Error('Driver profile not found');
+    }
+
+    // Log action
+    await trx.insert(driverVerificationLog).values({
+      id: uuidv4(),
+      userId,
+      action: 'driver_rejected' as const,
+      adminId,
+      details: `Driver rejected: ${reason}`,
+      createdAt: new Date(),
+    });
+
+    return driver as DriverProfile;
+  });
+}
