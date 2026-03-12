@@ -247,11 +247,69 @@ hellodriver/main/
 
 ## Testing Requirements
 
-- **Integration Tests**: Every API route (Vitest + Supertest)
-- **Database Tests**: PostGIS queries against local Docker PostgreSQL
-- **GPS Tests**: Physical Tecno POVA 3 device with screen off
+**CRITICAL**: Integration tests run against **production Supabase**, not local mocks.
+
+### Why Production Infrastructure?
+- Schema mismatches caught immediately (not hidden by Docker-Postgres divergence)
+- Auth secrets stay in sync (JWT_SECRET between GitHub Actions and Fly.io)
+- Constraints, triggers, and stored procedures execute correctly
+- PostGIS queries perform as expected under real load
+- No false positives from mock/prod divergence
+
+### Test Strategy by Layer
+- **Unit Tests**: Validators, business logic (local, mocked)
+- **Integration Tests**: API routes with real Supabase PostgreSQL + Redis
+- **E2E Tests**: Payment flow with pawaPay staging sandbox
+- **Database Tests**: PostGIS queries against production schema
+- **GPS Tests**: Physical Tecno POVA 3 device with screen off (real geolocation)
 - **Load Tests**: k6 with African network simulation (200ms latency, 5% loss)
-- **Payment Tests**: pawaPay sandbox before production
+
+### Never Claim Tests Pass Without Real Infrastructure
+- "Code compiles" ≠ "code works"
+- "All tests pass locally" can hide integration bugs
+- **Always verify against production before claiming done**
+
+---
+
+## Code Modularity & Long-Term Integrity
+
+### Domain-Driven Module Structure
+Each feature is **self-contained** within a domain:
+```
+src/domains/auth/
+├── auth.routes.ts          # API endpoints only
+├── auth.service.ts         # Business logic only
+├── auth.validators.ts      # Zod schemas only
+├── auth.types.ts           # Domain types (exported)
+└── index.ts                # Single export barrel
+```
+
+**Benefits**:
+- Zero cross-domain imports (prevents spaghetti)
+- Easy to test in isolation
+- Easy to move/deprecate without breaking unrelated code
+- Clear responsibility boundaries
+
+### Immutability & Traceability
+- **Wallet balances**: NEVER write directly, use `post_wallet_transaction()` stored function
+- **Ledger rows**: Append-only, never update/delete (audit trail)
+- **Trip state**: Triggers enforce valid state transitions (no invalid states possible)
+- **Database migrations**: Version all schema changes, never rollback silently
+
+### Code Ownership & Clarity
+- Each domain has ONE service file (no fragmentation into 5 service files)
+- Routes are thin handlers: parse → service → response
+- Services are pure business logic: no HTTP concerns
+- Validators are independent: reusable in CLI, mobile, API
+
+### Long-Term Integrity Checklist
+Before marking a feature "done":
+- ✅ Tests run against production infrastructure (not mocks)
+- ✅ Error cases tested (not just happy path)
+- ✅ Audit trail exists (for financial transactions)
+- ✅ Schema changes are migrations (not DDL in code)
+- ✅ No hardcoded IDs, API keys, or secrets
+- ✅ Type safety across all layers (TypeScript strict mode)
 
 ---
 
