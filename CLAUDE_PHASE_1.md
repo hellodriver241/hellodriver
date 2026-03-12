@@ -1,37 +1,26 @@
-# Phase 1: Auth + Profile Setup — Implementation Guide
+# Phase 1: Auth + Profile Setup — Final Implementation Guide
 
 **Duration**: 3 weeks (Backend: 1 week, Mobile: 2 weeks parallel)
-**Goal**: Both client and driver can sign up, verify phone, and set up profile
-**Test Gate**: Sign up → Phone OTP → Profile complete → Dashboard accessible
+**Goal**: Both client and driver can sign up via phone OTP, verify, and set up profile
+**Test Gate**: Role select → Phone OTP → Profile → Dashboard accessible
 
 ---
 
-## Architecture
+## Screen Flow (from Figma)
 
-### Authentication Flow
 ```
-User selects role (Splash)
+Splash Screens (onboarding carousel)
   ↓
-Phone login (Supabase Auth) OR OAuth (Google/Facebook)
+Role Selector ("Je suis : Client / Driver")  ← KEY SCREEN
   ↓
-Phone OTP verification (if phone auth)
-  ↓
-Create user + profile in PostgreSQL
-  ↓
-Client → Home dashboard
-Driver → Document upload (must upload to go online)
-```
-
-### JWT Token Structure
-```json
-{
-  "sub": "user-id",
-  "email": "user@example.com",
-  "phone": "+241701234567",
-  "app_metadata": {
-    "role": "client" | "driver"
-  }
-}
+[CLIENT PATH]                    [DRIVER PATH]
+Client Login                      Driver Login
+  ↓                                 ↓
+Client Signup                     Driver Signup
+  ↓                                 ↓
+Client Home                       Document Upload (4 screens)
+                                    ↓
+                                  Driver Dashboard (locked)
 ```
 
 ---
@@ -49,9 +38,9 @@ export const users = pgTable('users', {
   id: uuid('id').defaultRandom().primaryKey(),
   authId: uuid('auth_id').notNull().unique(),
   role: text('role').notNull(), // 'client' | 'driver'
-  phone: text('phone').unique(),
-  firstName: text('first_name'),
-  lastName: text('last_name'),
+  phone: text('phone').unique().notNull(),
+  firstName: text('first_name').notNull(),
+  lastName: text('last_name').notNull(),
   email: text('email'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
@@ -69,7 +58,7 @@ export const driverProfiles = pgTable('driver_profiles', {
   id: uuid('id').defaultRandom().primaryKey(),
   userId: uuid('user_id').notNull().unique().references(() => users.id),
   phoneVerified: boolean('phone_verified').default(false),
-  verificationStatus: text('verification_status').default('pending_verification'),
+  verificationStatus: text('verification_status').default('pending_verification'), // pending_verification, approved, rejected
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });
 
@@ -77,14 +66,14 @@ export const documents = pgTable('documents', {
   id: uuid('id').defaultRandom().primaryKey(),
   driverProfileId: uuid('driver_profile_id').notNull().references(() => driverProfiles.id),
   documentType: text('document_type').notNull(), // 'license', 'id', 'insurance', 'vehicle_photo'
-  storagePath: text('storage_path').notNull(), // Supabase path
-  status: text('status').default('pending_review'),
+  storagePath: text('storage_path').notNull(), // Supabase Storage path
+  status: text('status').default('pending_review'), // pending_review, approved, rejected
   uploadedAt: timestamp('uploaded_at', { withTimezone: true }).defaultNow(),
   expiryDate: text('expiry_date'),
 });
 ```
 
-### Step 2: Validators
+### Step 2: Validators (Zod)
 
 **File**: `backend/src/validators/auth.ts`
 
@@ -93,64 +82,29 @@ import { z } from 'zod';
 
 export const phoneSchema = z
   .string()
-  .regex(/^\+241[0-9]{7,8}$/, 'Invalid Gabon phone number. Format: +241701234567');
+  .regex(/^\+241[0-9]{7,8}$/, 'Format: +241701234567');
+
+export const roleSchema = z.enum(['client', 'driver']);
 
 export const signupSchema = z.object({
-  role: z.enum(['client', 'driver']),
+  role: roleSchema,
   phone: phoneSchema,
   firstName: z.string().min(2).max(100),
   lastName: z.string().min(2).max(100),
-  provider: z.enum(['phone', 'google', 'facebook']),
+  email: z.string().email().optional(),
 });
 
 export const otpSchema = z.object({
   phone: phoneSchema,
-  code: z.string().length(6),
+  code: z.string().length(6).regex(/^\d{6}$/),
 });
 
-export const profileUpdateSchema = z.object({
-  firstName: z.string().min(2).max(100).optional(),
-  lastName: z.string().min(2).max(100).optional(),
-  email: z.string().email().optional(),
+export const documentUploadSchema = z.object({
+  documentType: z.enum(['license', 'id', 'insurance', 'vehicle_photo']),
 });
 ```
 
-### Step 3: Supabase Auth Plugin
-
-**File**: `backend/src/plugins/supabase.ts`
-
-```typescript
-import { createClient } from '@supabase/supabase-js';
-import fp from 'fastify-plugin';
-
-export default fp(async (app) => {
-  const supabaseUrl = process.env.SUPABASE_URL || '';
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY || '';
-
-  if (!supabaseUrl || !supabaseServiceKey) {
-    throw new Error('Missing Supabase credentials');
-  }
-
-  const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
-  });
-
-  app.decorate('supabase', supabase);
-});
-
-declare global {
-  namespace FastifyInstance {
-    interface FastifyInstance {
-      supabase: SupabaseClient;
-    }
-  }
-}
-```
-
-### Step 4: Auth Service
+### Step 3: Auth Service
 
 **File**: `backend/src/services/auth.ts`
 
@@ -164,9 +118,9 @@ export async function createUser(
   role: 'client' | 'driver',
   phone: string,
   firstName: string,
-  lastName: string
+  lastName: string,
+  email?: string
 ) {
-  // Create user
   const [user] = await db
     .insert(users)
     .values({
@@ -175,24 +129,21 @@ export async function createUser(
       phone,
       firstName,
       lastName,
+      email,
     })
     .returning();
 
-  // Create profile based on role
+  // Create role-specific profile
   if (role === 'client') {
-    await db
-      .insert(clientProfiles)
-      .values({
-        userId: user.id,
-        phoneVerified: true,
-      });
+    await db.insert(clientProfiles).values({
+      userId: user.id,
+      phoneVerified: true,
+    });
   } else {
-    await db
-      .insert(driverProfiles)
-      .values({
-        userId: user.id,
-        phoneVerified: true,
-      });
+    await db.insert(driverProfiles).values({
+      userId: user.id,
+      phoneVerified: true,
+    });
   }
 
   return user;
@@ -203,48 +154,58 @@ export async function getUser(authId: string) {
     where: eq(users.authId, authId),
   });
 }
+
+export async function getUserWithProfile(authId: string) {
+  const user = await getUser(authId);
+  if (!user) return null;
+
+  if (user.role === 'client') {
+    const profile = await db.query.clientProfiles.findFirst({
+      where: eq(clientProfiles.userId, user.id),
+    });
+    return { user, profile };
+  } else {
+    const profile = await db.query.driverProfiles.findFirst({
+      where: eq(driverProfiles.userId, user.id),
+    });
+    return { user, profile };
+  }
+}
 ```
 
-### Step 5: Auth Routes
+### Step 4: Auth Routes
 
 **File**: `backend/src/routes/auth.ts`
 
 ```typescript
 import { FastifyInstance } from 'fastify';
 import { signupSchema, otpSchema } from '../validators/auth';
-import { createUser, getUser } from '../services/auth';
+import { createUser, getUser, getUserWithProfile } from '../services/auth';
 
 export async function authRoutes(app: FastifyInstance) {
-  // Sign up (phone or OAuth)
-  app.post<{ Body: typeof signupSchema._type }>('/auth/signup', async (request, reply) => {
-    const { role, phone, firstName, lastName, provider } = request.body;
+  // Step 1: Send OTP
+  app.post('/auth/send-otp', async (request, reply) => {
+    const { phone } = signupSchema.pick({ phone: true }).parse(request.body);
 
     try {
-      if (provider === 'phone') {
-        // Send OTP via Supabase
-        const { error } = await app.supabase.auth.signInWithOtp({ phone });
-        if (error) throw error;
+      const { error } = await app.supabase.auth.signInWithOtp({ phone });
+      if (error) throw error;
 
-        return reply.code(200).send({
-          message: 'OTP sent to phone',
-          phone,
-        });
-      } else if (provider === 'google' || provider === 'facebook') {
-        // OAuth flow (handled by frontend)
-        return reply.code(200).send({
-          message: `Use ${provider} OAuth flow`,
-          provider,
-        });
-      }
+      return reply.code(200).send({
+        message: 'OTP sent to phone',
+        phone,
+      });
     } catch (err) {
       app.log.error(err);
-      return reply.code(400).send({ error: 'Signup failed' });
+      return reply.code(400).send({ error: 'Failed to send OTP' });
     }
   });
 
-  // Verify OTP and create user
-  app.post<{ Body: typeof otpSchema._type }>('/auth/verify-otp', async (request, reply) => {
-    const { phone, code } = request.body;
+  // Step 2: Verify OTP and create user
+  app.post('/auth/verify-otp-and-signup', async (request, reply) => {
+    const { phone, code, role, firstName, lastName, email } = otpSchema
+      .merge(signupSchema.pick({ role: true, firstName: true, lastName: true, email: true }))
+      .parse(request.body);
 
     try {
       const { data, error } = await app.supabase.auth.verifyOtp({
@@ -258,15 +219,7 @@ export async function authRoutes(app: FastifyInstance) {
       // Check if user exists
       let user = await getUser(data.user.id);
       if (!user) {
-        // Create new user (profile role will be in session metadata)
-        const role = request.body.role || 'client'; // From request
-        user = await createUser(
-          data.user.id,
-          role,
-          phone,
-          request.body.firstName || 'User',
-          request.body.lastName || 'User'
-        );
+        user = await createUser(data.user.id, role, phone, firstName, lastName, email);
       }
 
       return reply.code(200).send({
@@ -282,58 +235,51 @@ export async function authRoutes(app: FastifyInstance) {
 
   // Get current user
   app.get('/auth/me', { onRequest: [app.authenticate] }, async (request, reply) => {
-    const user = await getUser(request.user.sub);
-    return reply.send({ user });
+    const result = await getUserWithProfile(request.user.sub);
+    return reply.send(result);
+  });
+
+  // Update profile
+  app.patch('/auth/profile', { onRequest: [app.authenticate] }, async (request, reply) => {
+    const { firstName, lastName, email } = signupSchema
+      .pick({ firstName: true, lastName: true, email: true })
+      .partial()
+      .parse(request.body);
+
+    try {
+      const [user] = await db
+        .update(users)
+        .set({ firstName, lastName, email })
+        .where(eq(users.authId, request.user.sub))
+        .returning();
+
+      return reply.send(user);
+    } catch (err) {
+      app.log.error(err);
+      return reply.code(500).send({ error: 'Profile update failed' });
+    }
   });
 }
 ```
 
-### Step 6: Register Auth Routes
-
-**File**: `backend/src/index.ts`
-
-```typescript
-import { authRoutes } from './routes/auth';
-
-// ... in app init
-await app.register(authRoutes);
-```
-
-### Step 7: Supabase Storage Plugin
-
-**File**: `backend/src/plugins/storage.ts`
-
-```typescript
-import fp from 'fastify-plugin';
-import { createClient } from '@supabase/supabase-js';
-
-export default fp(async (app) => {
-  const supabase = createClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_KEY!
-  );
-
-  app.decorate('storage', supabase.storage);
-});
-```
-
-### Step 8: Document Upload Routes
+### Step 5: Document Upload Routes
 
 **File**: `backend/src/routes/driver.ts`
 
 ```typescript
-import { FastifyInstance, FastifyRequest } from 'fastify';
+import { FastifyInstance } from 'fastify';
 import { v4 as uuid } from 'uuid';
 import { documents } from '../db/schema';
 import { db } from '../db';
+import { eq } from 'drizzle-orm';
 
 export async function driverRoutes(app: FastifyInstance) {
   // Upload document
-  app.post<{ Params: { documentType: string } }>(
+  app.post(
     '/driver/documents/:documentType',
     { onRequest: [app.authenticate] },
     async (request, reply) => {
-      const { documentType } = request.params;
+      const { documentType } = request.params as { documentType: string };
       const file = await request.file();
 
       if (!file) {
@@ -341,6 +287,16 @@ export async function driverRoutes(app: FastifyInstance) {
       }
 
       try {
+        // Get driver profile
+        const driverProfile = await db.query.driverProfiles.findFirst({
+          where: (d) =>
+            db.sql`${eq(d.userId, request.user.sub)}`,
+        });
+
+        if (!driverProfile) {
+          return reply.code(404).send({ error: 'Driver profile not found' });
+        }
+
         const fileName = `${request.user.sub}/${documentType}/${uuid()}-${file.filename}`;
 
         const { error } = await app.storage
@@ -349,11 +305,10 @@ export async function driverRoutes(app: FastifyInstance) {
 
         if (error) throw error;
 
-        // Save to DB
         const [doc] = await db
           .insert(documents)
           .values({
-            driverProfileId: request.user.driverProfileId,
+            driverProfileId: driverProfile.id,
             documentType,
             storagePath: fileName,
           })
@@ -372,13 +327,40 @@ export async function driverRoutes(app: FastifyInstance) {
     '/driver/documents',
     { onRequest: [app.authenticate] },
     async (request, reply) => {
-      const docs = await db.query.documents.findMany({
-        where: (d) => eq(d.driverProfileId, request.user.driverProfileId),
-      });
-      return reply.send(docs);
+      try {
+        const driverProfile = await db.query.driverProfiles.findFirst({
+          where: (d) =>
+            db.sql`${eq(d.userId, request.user.sub)}`,
+        });
+
+        if (!driverProfile) {
+          return reply.code(404).send({ error: 'Driver profile not found' });
+        }
+
+        const docs = await db.query.documents.findMany({
+          where: (d) =>
+            db.sql`${eq(d.driverProfileId, driverProfile.id)}`,
+        });
+
+        return reply.send(docs);
+      } catch (err) {
+        app.log.error(err);
+        return reply.code(500).send({ error: 'Failed to fetch documents' });
+      }
     }
   );
 }
+```
+
+### Step 6: Register Routes in index.ts
+
+```typescript
+import { authRoutes } from './routes/auth';
+import { driverRoutes } from './routes/driver';
+
+// ... in app init
+await app.register(authRoutes);
+await app.register(driverRoutes);
 ```
 
 ---
@@ -387,112 +369,173 @@ export async function driverRoutes(app: FastifyInstance) {
 
 ### Client App (React Native / Flutter)
 
+**Screens**:
+1. **Splash** → Onboarding carousel (3 slides)
+2. **Role Selector** ("Je suis : Client / Driver")
+3. **Phone Login** (+241 input, Send OTP button)
+4. **OTP Verification** (6-digit code, verify button)
+5. **Profile Setup** (First name, Last name, Email - optional)
+6. **Home Dashboard** (Placeholder)
+
 **Auth Store** (Zustand):
 ```typescript
 interface AuthState {
   user: User | null;
   role: 'client' | 'driver' | null;
   token: string | null;
+  phone: string | null;
   loading: boolean;
-  signUp: (role, phone, firstName, lastName) => Promise<void>;
+  selectRole: (role) => void;
+  sendOtp: (phone) => Promise<void>;
   verifyOtp: (code) => Promise<void>;
-  login: (phone, password) => Promise<void>;
+  updateProfile: (firstName, lastName, email?) => Promise<void>;
   logout: () => void;
   initialize: () => Promise<void>;
 }
 ```
 
-**Screens**:
-1. Splash: Role selector
-2. Phone login: +241 format input
-3. OTP verification: 6-digit code
-4. Profile setup: Name + email
-5. Home: Placeholder
-
 ### Driver App (React Native / Flutter)
 
 **Screens**:
-1. Splash: Role selector
-2. Phone login + OTP
-3. Profile setup: Name + email
-4. Document upload: License, ID, Insurance, Vehicle photo
-5. Pending verification: Status badge + can't toggle online
-6. Dashboard: Locked until verified
+1. **Splash** → Onboarding carousel (3 slides)
+2. **Role Selector** ("Je suis : Client / Driver")
+3. **Phone Login** (Send OTP)
+4. **OTP Verification** (Verify code)
+5. **Profile Setup** (First name, Last name, Email - optional)
+6. **Document Upload** (4 screens):
+   - License upload (camera/file)
+   - ID upload (camera/file)
+   - Insurance upload (camera/file)
+   - Vehicle photo upload (camera/file)
+7. **Pending Verification** (Status badge, "Documents under review")
+8. **Driver Dashboard** (Locked until verified)
 
 ---
 
-## Testing
+## API Endpoints (Phase 1)
+
+```
+POST /auth/send-otp
+  Request: { phone: "+241701234567" }
+  Response: { message, phone }
+
+POST /auth/verify-otp-and-signup
+  Request: { phone, code, role, firstName, lastName, email? }
+  Response: { user, token, refreshToken }
+
+GET /auth/me
+  Response: { user, profile }
+
+PATCH /auth/profile
+  Request: { firstName?, lastName?, email? }
+  Response: { user }
+
+POST /driver/documents/:documentType
+  Request: FormData { file }
+  Response: { document }
+
+GET /driver/documents
+  Response: [{ document }]
+```
+
+---
+
+## Supabase Configuration
+
+1. **Enable Phone Authentication**:
+   - Settings → Authentication → Phone OTP
+   - SMS provider: Select appropriate (Africa's Talking or Twilio for Gabon)
+   - OTP expiry: 10 minutes
+
+2. **Optional: OAuth** (Google + Facebook):
+   - Settings → Authentication → Providers
+   - Add Google Client ID (from oauth_credentials.md)
+   - Add Facebook App ID
+
+3. **Create Storage Bucket**:
+   - Storage → Create bucket "driver-documents"
+   - Set policies: authenticated users can upload to their own folder
+
+---
+
+## Testing Strategy
 
 ### Backend Tests
-
 ```typescript
 // auth.test.ts
-describe('POST /auth/signup', () => {
-  it('should send OTP for valid phone', async () => {
+describe('POST /auth/send-otp', () => {
+  it('should send OTP for valid Gabon phone', async () => {
     const res = await app.inject({
       method: 'POST',
-      url: '/auth/signup',
-      payload: {
-        role: 'client',
-        phone: '+241701234567',
-        firstName: 'Jean',
-        lastName: 'Paul',
-        provider: 'phone',
-      },
+      url: '/auth/send-otp',
+      payload: { phone: '+241701234567' },
     });
     expect(res.statusCode).toBe(200);
+  });
+
+  it('should reject invalid phone format', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/auth/send-otp',
+      payload: { phone: '+1234567890' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+});
+
+describe('POST /auth/verify-otp-and-signup', () => {
+  it('should create user on valid OTP', async () => {
+    // Mock Supabase OTP verification
+    // Create user and profile
+    // Return token
   });
 });
 ```
 
 ### Mobile Tests
-
-- Phone format validation
-- Role selection state
-- OTP input (6 digits only)
-- Document upload progress
-- Auth state persistence
-
----
-
-## Deployment
-
-### Supabase Config
-1. Enable phone authentication (+241)
-2. Configure Google OAuth (optional)
-3. Configure Facebook OAuth (optional)
-4. Set up Supabase Storage bucket: `driver-documents`
-
-### Environment Variables
-```
-SUPABASE_URL=https://xxx.supabase.co
-SUPABASE_SERVICE_KEY=eyJxx...
-SUPABASE_JWT_SECRET=dSS69wOz...
-```
-
-### Fly.io Secrets
-```bash
-flyctl secrets set \
-  SUPABASE_URL=... \
-  SUPABASE_SERVICE_KEY=... \
-  SUPABASE_JWT_SECRET=...
-```
+- Role selector: Verify both roles show, navigation works
+- Phone input: Format validation, +241 prefix, 7-8 digits
+- OTP input: 6 digits only, verify button enabled when complete
+- Profile fields: Optional email, required name fields
+- Document upload: File picker, progress indicator, success state
 
 ---
 
 ## Acceptance Criteria
 
-- [ ] User can sign up with phone (+241 format)
-- [ ] OTP sent to phone (Supabase)
-- [ ] User verifies OTP and gets JWT
-- [ ] User profile created (client_profiles or driver_profiles)
-- [ ] Driver can upload documents
-- [ ] JWT contains role claim
-- [ ] Client redirected to home
-- [ ] Driver redirected to document upload
-- [ ] All integration tests pass
+✅ User taps "Client" or "Driver" on role selector
+✅ User enters phone (+241 format) and receives OTP
+✅ User enters 6-digit OTP and verifies
+✅ User enters name + optional email
+✅ Client is redirected to Home screen
+✅ Driver is redirected to Document Upload screen
+✅ Driver can upload 4 document types
+✅ Documents show "Pending review" status
+✅ Driver cannot toggle online until verified
+✅ All integration tests pass
+✅ Fly.io deployment succeeds
 
 ---
 
-**Status**: Ready for Implementation
-**Assigned**: Backend (1 week) + Mobile (2 weeks parallel)
+## Deployment Checklist
+
+- [ ] Supabase: Phone OTP configured + SMS provider set up
+- [ ] Supabase: Storage bucket "driver-documents" created
+- [ ] GitHub Secrets: SUPABASE_URL, SUPABASE_SERVICE_KEY, SUPABASE_JWT_SECRET
+- [ ] Fly.io: Secrets deployed
+- [ ] Mobile: Auth store connected to API
+- [ ] Mobile: Role selector implemented
+- [ ] Mobile: Document upload working
+
+---
+
+**Status**: 🚀 **READY TO IMPLEMENT**
+**Start Date**: 2026-03-12
+**Backend Owner**: Claude (autonomous)
+**Mobile Owner**: Claude (autonomous)
+**Test Lead**: Claude + Integration tests
+
+---
+
+**Last Updated**: 2026-03-12
+**Version**: FINAL (based on actual Figma design + 5 critical fixes)
