@@ -132,12 +132,13 @@ async function setupDriver(
     vehicleBrand: 'Toyota',
     vehicleYear: 2022,
     vehicleModel: 'Hilux',
-    vehicleRegistration: `GA-${uid.slice(0, 4)}-${firstName.slice(0, 2)}`,
+    vehicleRegistration: `GA-${uid.slice(0, 4)}-${firstName.slice(0, 2).toUpperCase()}`,
     residentialArea: 'Libreville Centre',
     hasAc: true,
     mobileMoneyAccount: phone,
   }, token);
-  expect(profileRes.status, `profile ${phone}`).toBe(201);
+  const profileBody = await profileRes.json() as any;
+  expect(profileRes.status, `profile ${phone}: ${JSON.stringify(profileBody)}`).toBe(201);
 
   // Documents
   for (const docType of ['drivers_license', 'id_card', 'vehicle_insurance']) {
