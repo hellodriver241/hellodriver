@@ -30,13 +30,14 @@ jobs:
 
       - name: Run integration tests against Supabase + Railway Redis
         working-directory: ./backend
+        run: pnpm test
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           REDIS_URL: ${{ secrets.REDIS_URL }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_JWT_SECRET: ${{ secrets.SUPABASE_JWT_SECRET }}
           NODE_ENV: test
-        run: pnpm test
 
       - name: Upload test results
         if: always()
