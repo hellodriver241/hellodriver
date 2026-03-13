@@ -34,6 +34,9 @@ export async function registerAuthRoutes(app: FastifyInstance) {
       const result = await sendOTP(phone);
 
       if (!result.success) {
+        if (result.error?.toLowerCase().includes('too many')) {
+          return reply.code(429).send({ error: { code: 'OTP_RATE_LIMITED', message: result.error } });
+        }
         throw errors.otpSendFailed(result.error);
       }
 

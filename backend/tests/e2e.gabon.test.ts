@@ -254,9 +254,9 @@ describe('Auth flow', () => {
     const res = await get('/auth/me', clientToken);
     const body = await res.json() as any;
     expect(res.status).toBe(200);
-    expect(body.phone).toBe(clientPhone);
-    expect(body.role).toBe('client');
-    expect(body.id).toBe(clientId);
+    expect(body.user.phone).toBe(clientPhone);
+    expect(body.user.role).toBe('client');
+    expect(body.user.id).toBe(clientId);
   });
 
   it('GET /auth/me returns 401 with no token', async () => {
@@ -267,18 +267,15 @@ describe('Auth flow', () => {
   it('OTP rate limit: 4th request in 15 min returns error', async () => {
     // We already called send-otp once for clientPhone in signUp
     // This is the 2nd, 3rd, 4th — 4th should fail
+    // RATE_LIMIT_MAX = 3: requests 1-3 OK, 4th rejected with 429
     const phone = `+241074${Math.floor(100000 + Math.random() * 900000)}`;
     await post('/auth/send-otp', { phone });
     await post('/auth/send-otp', { phone });
     await post('/auth/send-otp', { phone });
     const fourthRes = await post('/auth/send-otp', { phone });
-    // The 4th attempt within 15 minutes should be rate-limited
-    expect(fourthRes.status).toBe(200); // OK — 4th is within the 3-per-15min limit
-    const fifthRes = await post('/auth/send-otp', { phone });
-    // The 5th should be rejected (only 3 allowed)
-    expect(fifthRes.status).toBe(400);
-    const fifthBody = await fifthRes.json() as any;
-    expect(fifthBody.error?.message ?? fifthBody.error).toMatch(/too many/i);
+    expect(fourthRes.status).toBe(429);
+    const fourthBody = await fourthRes.json() as any;
+    expect(fourthBody.error?.message ?? fourthBody.error).toMatch(/too many/i);
   });
 });
 
@@ -416,7 +413,12 @@ describe('Full trip lifecycle — Libreville', () => {
       });
 
       clientSocket.on('connect', async () => {
-        // Driver 1 submits a bid after client is connected and listening
+        // Join the trip room so we receive bid:received events
+        clientSocket.emit('join:trip', tripId);
+        // Small delay to ensure room join is processed before bid submission
+        await new Promise(r => setTimeout(r, 200));
+
+        // Driver 1 submits a bid after client is connected and in the room
         const bidRes = await post(`/trips/${tripId}/bid`, {
           amountXaf: expectedFareXaf(
             PLACE_INDEPENDANCE.lat, PLACE_INDEPENDANCE.lon,
@@ -443,6 +445,8 @@ describe('Full trip lifecycle — Libreville', () => {
 
   it('client accepts driver1\'s bid', async () => {
     expect(bidId).toBeDefined();
+    // Refresh heartbeat — it may have expired during the Socket.io test (8s TTL was 25s)
+    await redis.setex(`driver:${driver1Id}:heartbeat`, 60, '1');
     const res = await patch(`/trips/${tripId}/accept-bid`, { bidId }, clientToken);
     const body = await res.json() as any;
     expect(res.status, `accept bid: ${JSON.stringify(body)}`).toBe(200);
@@ -501,8 +505,10 @@ describe('Full trip lifecycle — Libreville', () => {
 });
 
 describe('Concurrent bids — Redis NX atomicity', () => {
-  it('two simultaneous bids on the same trip: exactly one wins (409 for the other)', async () => {
-    // Book a fresh trip
+  it('same driver bidding twice simultaneously: exactly one wins (409 for the duplicate)', async () => {
+    // NX key is bid:{tripId}:{driverId} — prevents the SAME driver from double-bidding.
+    // Two different drivers can both bid 201 (that's correct business logic).
+    // This test fires two requests from the same driver token simultaneously.
     const bookRes = await post('/trips/book', {
       originLatitude: PLACE_INDEPENDANCE.lat,
       originLongitude: PLACE_INDEPENDANCE.lon,
@@ -516,34 +522,21 @@ describe('Concurrent bids — Redis NX atomicity', () => {
     expect(bookRes.status).toBe(201);
     const raceTripId = bookBody.trip.id;
 
-    // Ensure driver1 has no active_trip from the previous lifecycle test
     await redis.del(`driver:${driver1Id}:active_trip`);
-    await redis.del(`driver:${driver2Id}:active_trip`);
-    await redis.setex(`driver:${driver1Id}:heartbeat`, 25, '1');
-    await redis.setex(`driver:${driver2Id}:heartbeat`, 25, '1');
+    await redis.setex(`driver:${driver1Id}:heartbeat`, 60, '1');
 
-    // Refresh driver2 GPS to be near pickup for this test
-    await post('/drivers/location', {
-      latitude: QUARTIER_LOUIS.lat, longitude: QUARTIER_LOUIS.lon,
-      speed: 0, bearing: 0, accuracy: 5,
-    }, driver2Token);
-    await patch('/drivers/toggle-online', { isOnline: true }, driver2Token);
-
-    // Fire both bids simultaneously
+    // Same driver, two simultaneous bid requests
     const [res1, res2] = await Promise.all([
       post(`/trips/${raceTripId}/bid`, { amountXaf: 5000, etaMinutes: 3 }, driver1Token),
-      post(`/trips/${raceTripId}/bid`, { amountXaf: 5000, etaMinutes: 3 }, driver2Token),
+      post(`/trips/${raceTripId}/bid`, { amountXaf: 5000, etaMinutes: 3 }, driver1Token),
     ]);
 
-    const statuses = [res1.status, res2.status];
-    console.log(`  Concurrent bid statuses: ${statuses.join(', ')}`);
+    const statuses = [res1.status, res2.status].sort();
+    console.log(`  Concurrent same-driver bid statuses: ${statuses.join(', ')}`);
 
-    const wins = statuses.filter(s => s === 201).length;
-    const conflicts = statuses.filter(s => s === 409).length;
-
-    // Exactly one winner, one conflict — Redis NX atomicity must hold
-    expect(wins).toBe(1);
-    expect(conflicts).toBe(1);
+    // Redis NX ensures exactly one wins, one 409
+    expect(statuses).toContain(201);
+    expect(statuses).toContain(409);
 
     await patch(`/trips/${raceTripId}/status`, { status: 'cancelled_by_client' }, clientToken);
   });
