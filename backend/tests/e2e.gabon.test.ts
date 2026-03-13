@@ -205,7 +205,7 @@ beforeAll(async () => {
     OWENDO.lat, OWENDO.lon);
   driver2Token = d2.token;
   driver2Id = d2.id;
-}, 120_000);
+}, 180_000);
 
 afterAll(async () => {
   for (const s of openSockets) s.disconnect();

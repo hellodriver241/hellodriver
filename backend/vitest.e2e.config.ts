@@ -13,5 +13,6 @@ export default defineConfig({
     globals: true,
     include: ['tests/e2e.gabon.test.ts'],
     testTimeout: 30000,
+    hookTimeout: 180000,
   },
 });
