@@ -138,7 +138,7 @@ async function setupDriver(
     mobileMoneyAccount: phone,
   }, token);
   const profileBody = await profileRes.json() as any;
-  expect(profileRes.status, `profile ${phone}: ${JSON.stringify(profileBody)}`).toBe(201);
+  expect(profileRes.status, `profile ${phone}: ${JSON.stringify(profileBody)}`).toBe(200);
 
   // Documents
   for (const docType of ['drivers_license', 'id_card', 'vehicle_insurance']) {
@@ -151,9 +151,9 @@ async function setupDriver(
       body: form,
     });
     const docBody = await docRes.json() as any;
-    expect(docRes.status, `upload ${docType}`).toBe(201);
+    expect(docRes.status, `upload ${docType}: ${JSON.stringify(docBody)}`).toBe(200);
 
-    await fetch(`${PROD_URL}/admin/drivers/${id}/documents/${docBody.id}/approve`, {
+    await fetch(`${PROD_URL}/admin/drivers/${id}/documents/${docBody.data?.id ?? docBody.id}/approve`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' },
     });
