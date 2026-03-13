@@ -1,5 +1,6 @@
 import { initializeDatabase } from './db/index.js';
 import { initializeRedis } from './plugins/redis.js';
+import { initializeSocketIO } from './plugins/socketio.js';
 import { createApp } from './core/app.js';
 import { registerRoutes } from './routes.js';
 import { config } from './core/config.js';
@@ -19,6 +20,9 @@ const start = async () => {
     // Register routes
     await registerRoutes(app);
     console.log('✓ Routes registered');
+
+    // Initialize Socket.io
+    initializeSocketIO(app.server);
 
     // Start server
     await app.listen({ port: config.PORT, host: config.HOST });

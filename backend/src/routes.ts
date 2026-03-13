@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import { registerAuthRoutes } from './domains/auth/auth.routes.js';
 import { registerDriverRoutes } from './domains/driver/driver.routes.js';
+import { registerTripRoutes } from './domains/trip/trip.routes.js';
 
 /**
  * Register all routes
@@ -18,7 +19,9 @@ export async function registerRoutes(app: FastifyInstance) {
   // Driver routes
   await registerDriverRoutes(app);
 
-  // TODO: Phase 3 - Trip routes
+  // Trip routes (Phase 2)
+  await registerTripRoutes(app);
+
   // TODO: Phase 3 - Payment routes
   // TODO: Phase 3 - Admin routes (beyond driver verification)
 }

@@ -13,9 +13,12 @@ export function initializeDatabase() {
     throw new Error('DATABASE_URL environment variable is not set');
   }
 
+  // SSL: required for Supabase session pooler (aws-*.pooler.supabase.com) and production.
+  // Disabled only for pure localhost connections.
+  const isLocalhost = connectionString.includes('localhost') || connectionString.includes('127.0.0.1');
   pool = new Pool({
     connectionString,
-    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+    ssl: isLocalhost ? false : { rejectUnauthorized: false },
   });
 
   // Cache Drizzle instance with the pool
