@@ -124,7 +124,7 @@ async function setupDriver(
   lat: number,
   lon: number,
 ): Promise<{ token: string; id: string }> {
-  const { token, id } = await signUp(phone, 'driver', firstName, 'E2E');
+  const { token, id } = await signUp(phone, 'driver', firstName, 'Test');
 
   // Driver profile
   const profileRes = await post('/drivers/profile', {
@@ -186,10 +186,10 @@ beforeAll(async () => {
   await redis.ping();
 
   // Create admin account
-  const admin = await signUp(adminPhone, 'admin', 'Admin', 'E2E');
+  const admin = await signUp(adminPhone, 'admin', 'Admin', 'Test');
 
   // Create client account (Airtel +24107X)
-  const client = await signUp(clientPhone, 'client', 'Agathe', 'E2E');
+  const client = await signUp(clientPhone, 'client', 'Agathe', 'Test');
   clientToken = client.token;
   clientId = client.id;
 
