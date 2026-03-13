@@ -85,17 +85,30 @@ export async function registerDriverRoutes(app: FastifyInstance) {
     async (request: FastifyRequest, reply: FastifyReply) => {
       const userId = (request.user as any).sub;
 
-      const file = await request.file();
-      if (!file) {
+      // Use request.parts() to consume both text fields and file regardless of order
+      let fileBuffer: Buffer | null = null;
+      let fileFilename = '';
+      let documentTypeRaw: string | undefined;
+
+      for await (const part of request.parts()) {
+        if (part.type === 'file' && part.fieldname === 'file') {
+          fileBuffer = await part.toBuffer();
+          fileFilename = part.filename;
+        } else if (part.type === 'field' && part.fieldname === 'documentType') {
+          documentTypeRaw = part.value as string;
+        }
+      }
+
+      if (!fileBuffer) {
         throw errors.validationFailed({ file: 'No file provided' });
       }
 
-      const { documentType } = documentUploadSchema.parse(request.body);
+      const { documentType } = documentUploadSchema.parse({ documentType: documentTypeRaw });
 
       try {
         // Upload to Supabase Storage
-        const buffer = await file.toBuffer();
-        const storageUrl = await uploadFile(userId, documentType, buffer, file.filename);
+        const buffer = fileBuffer;
+        const storageUrl = await uploadFile(userId, documentType, buffer, fileFilename);
 
         // Record in database
         const doc = await recordDocumentUpload(userId, documentType, storageUrl);
