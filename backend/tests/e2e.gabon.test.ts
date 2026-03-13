@@ -431,7 +431,7 @@ describe('Full trip lifecycle — Libreville', () => {
           reject(new Error(`Bid failed: ${bidRes.status} ${JSON.stringify(bidBody)}`));
           return;
         }
-        bidId = bidBody.bid.id;
+        bidId = bidBody.id;
       });
 
       clientSocket.on('connect_error', (err: Error) => {
@@ -446,15 +446,15 @@ describe('Full trip lifecycle — Libreville', () => {
     const res = await patch(`/trips/${tripId}/accept-bid`, { bidId }, clientToken);
     const body = await res.json() as any;
     expect(res.status, `accept bid: ${JSON.stringify(body)}`).toBe(200);
-    expect(body.trip.status).toBe('bid_accepted');
-    console.log(`  Bid accepted — trip status: ${body.trip.status}`);
+    expect(body.status).toBe('bid_accepted');
+    console.log(`  Bid accepted — trip status: ${body.status}`);
   });
 
   it('driver sets status to en_route first', async () => {
     const res = await patch(`/trips/${tripId}/status`, { status: 'driver_en_route' }, driver1Token);
     const body = await res.json() as any;
     expect(res.status, JSON.stringify(body)).toBe(200);
-    expect(body.trip.status).toBe('driver_en_route');
+    expect(body.status).toBe('driver_en_route');
   });
 
   it('driver updates GPS while en route (Gabon 3G latency)', async () => {
@@ -477,21 +477,21 @@ describe('Full trip lifecycle — Libreville', () => {
     const res = await patch(`/trips/${tripId}/status`, { status: 'driver_arrived' }, driver1Token);
     const body = await res.json() as any;
     expect(res.status, JSON.stringify(body)).toBe(200);
-    expect(body.trip.status).toBe('driver_arrived');
+    expect(body.status).toBe('driver_arrived');
   });
 
   it('trip starts (client boards) → status: in_transit', async () => {
     const res = await patch(`/trips/${tripId}/status`, { status: 'in_transit' }, driver1Token);
     const body = await res.json() as any;
     expect(res.status, JSON.stringify(body)).toBe(200);
-    expect(body.trip.status).toBe('in_transit');
+    expect(body.status).toBe('in_transit');
   });
 
   it('trip completes → status: completed + Redis active_trip key cleared', async () => {
     const res = await patch(`/trips/${tripId}/status`, { status: 'completed' }, driver1Token);
     const body = await res.json() as any;
     expect(res.status, JSON.stringify(body)).toBe(200);
-    expect(body.trip.status).toBe('completed');
+    expect(body.status).toBe('completed');
 
     // Redis cleanup verification — critical for driver being able to take new trips
     const activeTrip = await redis.get(`driver:${driver1Id}:active_trip`);
