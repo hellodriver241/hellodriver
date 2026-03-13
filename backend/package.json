@@ -16,7 +16,7 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "lint": "echo 'Linting skipped for Phase 1'",
-    "test:e2e": "vitest run tests/e2e.gabon.test.ts"
+    "test:e2e": "vitest run --config vitest.e2e.config.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.0",

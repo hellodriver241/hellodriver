@@ -306,7 +306,7 @@ describe('Fare calculation — Libreville landmarks', () => {
     console.log(`  ${PLACE_INDEPENDANCE.label} → ${AEROPORT_LEON_MBA.label}: ${body.fareEstimateXaf} XAF`);
 
     // Cancel this fare-check trip before the main lifecycle test
-    await post(`/trips/${body.trip.id}/cancel`, {}, clientToken);
+    await patch(`/trips/${body.trip.id}/status`, { status: 'cancelled_by_client' }, clientToken);
   });
 });
 
@@ -328,7 +328,7 @@ describe('Geospatial driver matching', () => {
 
     // Driver 1 (Quartier Louis, 0.9 km) queries available trips from his position
     const availRes = await get(
-      `/drivers/available-trips?lat=${QUARTIER_LOUIS.lat}&lon=${QUARTIER_LOUIS.lon}`,
+      `/trips/available?latitude=${QUARTIER_LOUIS.lat}&longitude=${QUARTIER_LOUIS.lon}`,
       driver1Token,
     );
     const availBody = await availRes.json() as any;
@@ -338,7 +338,7 @@ describe('Geospatial driver matching', () => {
     expect(tripIds).toContain(testTripId);
 
     // Clean up
-    await post(`/trips/${testTripId}/cancel`, {}, clientToken);
+    await patch(`/trips/${testTripId}/status`, { status: 'cancelled_by_client' }, clientToken);
   });
 
   it('driver in Owendo (~13 km) does NOT see the same trip', async () => {
@@ -357,7 +357,7 @@ describe('Geospatial driver matching', () => {
 
     // Driver 2 (Owendo, 13 km) queries from his position
     const availRes = await get(
-      `/drivers/available-trips?lat=${OWENDO.lat}&lon=${OWENDO.lon}`,
+      `/trips/available?latitude=${OWENDO.lat}&longitude=${OWENDO.lon}`,
       driver2Token,
     );
     const availBody = await availRes.json() as any;
@@ -367,7 +367,7 @@ describe('Geospatial driver matching', () => {
     expect(tripIds).not.toContain(testTripId);
     console.log(`  Owendo driver correctly excluded (returned ${tripIds.length} trips, not this one)`);
 
-    await post(`/trips/${testTripId}/cancel`, {}, clientToken);
+    await patch(`/trips/${testTripId}/status`, { status: 'cancelled_by_client' }, clientToken);
   });
 });
 
@@ -442,11 +442,18 @@ describe('Full trip lifecycle — Libreville', () => {
 
   it('client accepts driver1\'s bid', async () => {
     expect(bidId).toBeDefined();
-    const res = await post(`/trips/${tripId}/bids/${bidId}/accept`, {}, clientToken);
+    const res = await patch(`/trips/${tripId}/accept-bid`, { bidId }, clientToken);
     const body = await res.json() as any;
     expect(res.status, `accept bid: ${JSON.stringify(body)}`).toBe(200);
-    expect(body.trip.status).toBe('driver_en_route');
+    expect(body.trip.status).toBe('bid_accepted');
     console.log(`  Bid accepted — trip status: ${body.trip.status}`);
+  });
+
+  it('driver sets status to en_route first', async () => {
+    const res = await patch(`/trips/${tripId}/status`, { status: 'driver_en_route' }, driver1Token);
+    const body = await res.json() as any;
+    expect(res.status, JSON.stringify(body)).toBe(200);
+    expect(body.trip.status).toBe('driver_en_route');
   });
 
   it('driver updates GPS while en route (Gabon 3G latency)', async () => {
@@ -454,7 +461,7 @@ describe('Full trip lifecycle — Libreville', () => {
     // Simulate driver moving from Quartier Louis towards Place de l'Indépendance
     const res = await post('/drivers/location', {
       latitude: 0.3960,
-      longitude: 0.4600,
+      longitude: 9.4600,
       speed: 28, // ~28 km/h in Libreville traffic
       bearing: 185,
       accuracy: 8,
@@ -472,11 +479,11 @@ describe('Full trip lifecycle — Libreville', () => {
     expect(body.trip.status).toBe('driver_arrived');
   });
 
-  it('trip starts (client boards) → status: in_progress', async () => {
-    const res = await patch(`/trips/${tripId}/status`, { status: 'in_progress' }, driver1Token);
+  it('trip starts (client boards) → status: in_transit', async () => {
+    const res = await patch(`/trips/${tripId}/status`, { status: 'in_transit' }, driver1Token);
     const body = await res.json() as any;
     expect(res.status, JSON.stringify(body)).toBe(200);
-    expect(body.trip.status).toBe('in_progress');
+    expect(body.trip.status).toBe('in_transit');
   });
 
   it('trip completes → status: completed + Redis active_trip key cleared', async () => {
@@ -537,6 +544,6 @@ describe('Concurrent bids — Redis NX atomicity', () => {
     expect(wins).toBe(1);
     expect(conflicts).toBe(1);
 
-    await post(`/trips/${raceTripId}/cancel`, {}, clientToken);
+    await patch(`/trips/${raceTripId}/status`, { status: 'cancelled_by_client' }, clientToken);
   });
 });
