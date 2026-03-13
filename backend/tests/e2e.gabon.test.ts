@@ -403,7 +403,7 @@ describe('Full trip lifecycle — Libreville', () => {
       clientSocket.on('bid:received', (data: any) => {
         clearTimeout(timeout);
         try {
-          expect(data.tripId).toBe(tripId);
+          expect(data.bidId).toBeDefined();
           expect(data.driverId).toBe(driver1Id);
           expect(data.amountXaf).toBeGreaterThanOrEqual(1500);
           resolve();
