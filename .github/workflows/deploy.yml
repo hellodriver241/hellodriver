@@ -38,14 +38,11 @@ jobs:
         with:
           version: 9
 
-      - name: Verify backend exists
-        run: ls -la backend/src/index.ts
-
       - name: Install dependencies
         working-directory: ./backend
         run: pnpm install
 
-      - name: Run integration tests
+      - name: Run integration tests (local Redis)
         working-directory: ./backend
         run: pnpm test
         env:
@@ -64,3 +61,26 @@ jobs:
         run: flyctl deploy --remote-only
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Wait for deployment to stabilise
+        run: sleep 15
+
+      - name: Tunnel Fly Redis for E2E tests
+        run: flyctl proxy 6380:6379 -a hellodriver-redis &
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Wait for proxy
+        run: sleep 5
+
+      - name: Run E2E tests against live hellodriver-main.fly.dev
+        working-directory: ./backend
+        run: pnpm test:e2e
+        env:
+          NODE_ENV: test
+          REDIS_URL: redis://default:${{ secrets.FLY_REDIS_PASSWORD }}@localhost:6380
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          SUPABASE_JWT_SECRET: ${{ secrets.SUPABASE_JWT_SECRET }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
