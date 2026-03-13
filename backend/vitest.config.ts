@@ -19,13 +19,14 @@ export default defineConfig({
   test: {
     environment: 'node',
     globals: true,
+    // E2E tests require a live deployed server + production Redis.
+    // They are excluded from the default `pnpm test` run (CI integration tests).
+    // Run them separately with: pnpm test:e2e
+    exclude: ['**/node_modules/**', '**/dist/**', '**/e2e.*.test.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
-      exclude: [
-        'node_modules/',
-        'dist/',
-      ],
+      exclude: ['node_modules/', 'dist/', '**/e2e.*.test.ts'],
     },
   },
 });
