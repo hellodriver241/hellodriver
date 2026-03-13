@@ -406,6 +406,9 @@ describe('Full trip lifecycle — Libreville', () => {
           expect(data.bidId).toBeDefined();
           expect(data.driverId).toBe(driver1Id);
           expect(data.amountXaf).toBeGreaterThanOrEqual(1500);
+          // Capture bidId from the real-time event — this is the authoritative source
+          // and avoids any race condition with the HTTP response assignment below
+          bidId = data.bidId;
           resolve();
         } catch (e) {
           reject(e);
