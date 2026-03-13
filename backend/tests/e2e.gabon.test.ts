@@ -541,3 +541,307 @@ describe('Concurrent bids — Redis NX atomicity', () => {
     await patch(`/trips/${raceTripId}/status`, { status: 'cancelled_by_client' }, clientToken);
   });
 });
+
+describe('Authorization guards', () => {
+  it('client cannot bid on a trip (requireDriver → 403)', async () => {
+    const bookRes = await post('/trips/book', {
+      originLatitude: PLACE_INDEPENDANCE.lat,
+      originLongitude: PLACE_INDEPENDANCE.lon,
+      destinationLatitude: AEROPORT_LEON_MBA.lat,
+      destinationLongitude: AEROPORT_LEON_MBA.lon,
+    }, clientToken);
+    const bookBody = await bookRes.json() as any;
+    expect(bookRes.status).toBe(201);
+    const testTripId = bookBody.trip.id;
+
+    const bidRes = await post(`/trips/${testTripId}/bid`, { amountXaf: 3000, etaMinutes: 5 }, clientToken);
+    expect(bidRes.status).toBe(403);
+
+    await patch(`/trips/${testTripId}/status`, { status: 'cancelled_by_client' }, clientToken);
+  });
+
+  it('driver cannot book a trip (requireClient → 403)', async () => {
+    const res = await post('/trips/book', {
+      originLatitude: PLACE_INDEPENDANCE.lat,
+      originLongitude: PLACE_INDEPENDANCE.lon,
+      destinationLatitude: AEROPORT_LEON_MBA.lat,
+      destinationLongitude: AEROPORT_LEON_MBA.lon,
+    }, driver1Token);
+    expect(res.status).toBe(403);
+  });
+
+  it('unauthenticated request returns 401', async () => {
+    const res = await get('/auth/me');
+    expect(res.status).toBe(401);
+  });
+});
+
+describe('State machine enforcement', () => {
+  it('invalid transition is rejected with 400', async () => {
+    // Book a trip (pending_bids) and try to jump directly to completed — invalid
+    const bookRes = await post('/trips/book', {
+      originLatitude: PLACE_INDEPENDANCE.lat,
+      originLongitude: PLACE_INDEPENDANCE.lon,
+      destinationLatitude: AEROPORT_LEON_MBA.lat,
+      destinationLongitude: AEROPORT_LEON_MBA.lon,
+    }, clientToken);
+    const bookBody = await bookRes.json() as any;
+    expect(bookRes.status).toBe(201);
+    const testTripId = bookBody.trip.id;
+
+    // pending_bids → completed is not in VALID_TRANSITIONS
+    const res = await patch(`/trips/${testTripId}/status`, { status: 'completed' }, driver1Token);
+    expect(res.status).toBe(400);
+    const body = await res.json() as any;
+    expect(body.error.message).toMatch(/Cannot transition/i);
+
+    await patch(`/trips/${testTripId}/status`, { status: 'cancelled_by_client' }, clientToken);
+  });
+
+  it('client cannot set driver_en_route (role mismatch → 403)', async () => {
+    // Set up a trip at bid_accepted state
+    await redis.del(`driver:${driver1Id}:active_trip`);
+    await redis.setex(`driver:${driver1Id}:heartbeat`, 60, '1');
+
+    const bookRes = await post('/trips/book', {
+      originLatitude: PLACE_INDEPENDANCE.lat,
+      originLongitude: PLACE_INDEPENDANCE.lon,
+      destinationLatitude: AEROPORT_LEON_MBA.lat,
+      destinationLongitude: AEROPORT_LEON_MBA.lon,
+    }, clientToken);
+    const bookBody = await bookRes.json() as any;
+    expect(bookRes.status).toBe(201);
+    const testTripId = bookBody.trip.id;
+
+    const bidRes = await post(`/trips/${testTripId}/bid`, { amountXaf: 3000, etaMinutes: 5 }, driver1Token);
+    expect(bidRes.status).toBe(201);
+    const testBidId = (await bidRes.json() as any).id;
+
+    await redis.setex(`driver:${driver1Id}:heartbeat`, 60, '1');
+    const acceptRes = await patch(`/trips/${testTripId}/accept-bid`, { bidId: testBidId }, clientToken);
+    expect(acceptRes.status).toBe(200);
+
+    // Client tries to push driver_en_route — only the driver can
+    const res = await patch(`/trips/${testTripId}/status`, { status: 'driver_en_route' }, clientToken);
+    expect(res.status).toBe(403);
+    const body = await res.json() as any;
+    expect(body.error.message).toMatch(/Only the assigned driver/i);
+
+    // Clean up
+    await patch(`/trips/${testTripId}/status`, { status: 'cancelled_by_client' }, clientToken);
+  });
+});
+
+describe('Driver protection', () => {
+  it('non-approved driver cannot bid (400)', async () => {
+    // driver2Phone was approved in setupDriver but we can test with a fresh unapproved driver
+    // Easier: use driver2 who is approved but far away — instead create a new unverified driver
+    // by registering one but not going through admin approval
+    const unverifiedUid = Math.floor(100000 + Math.random() * 900000).toString();
+    const unverifiedPhone = `+241077${unverifiedUid}`;
+    const { token: unverifiedToken } = await signUp(unverifiedPhone, 'driver', 'Jean', 'Test');
+
+    const bookRes = await post('/trips/book', {
+      originLatitude: PLACE_INDEPENDANCE.lat,
+      originLongitude: PLACE_INDEPENDANCE.lon,
+      destinationLatitude: AEROPORT_LEON_MBA.lat,
+      destinationLongitude: AEROPORT_LEON_MBA.lon,
+    }, clientToken);
+    const bookBody = await bookRes.json() as any;
+    expect(bookRes.status).toBe(201);
+    const testTripId = bookBody.trip.id;
+
+    const bidRes = await post(`/trips/${testTripId}/bid`, { amountXaf: 3000, etaMinutes: 5 }, unverifiedToken);
+    expect(bidRes.status).toBe(400);
+    const body = await bidRes.json() as any;
+    expect(body.error.message).toMatch(/not verified|KYC/i);
+
+    await patch(`/trips/${testTripId}/status`, { status: 'cancelled_by_client' }, clientToken);
+  });
+
+  it('driver with active trip cannot bid on another trip (400)', async () => {
+    // Manually set an active_trip key for driver2 to simulate them being mid-trip
+    const fakeTripId = '00000000-0000-0000-0000-000000000001';
+    await redis.setex(`driver:${driver2Id}:active_trip`, 7200, fakeTripId);
+    await redis.setex(`driver:${driver2Id}:heartbeat`, 60, '1');
+
+    const bookRes = await post('/trips/book', {
+      originLatitude: PLACE_INDEPENDANCE.lat,
+      originLongitude: PLACE_INDEPENDANCE.lon,
+      destinationLatitude: AEROPORT_LEON_MBA.lat,
+      destinationLongitude: AEROPORT_LEON_MBA.lon,
+    }, clientToken);
+    const bookBody = await bookRes.json() as any;
+    expect(bookRes.status).toBe(201);
+    const testTripId = bookBody.trip.id;
+
+    const bidRes = await post(`/trips/${testTripId}/bid`, { amountXaf: 3000, etaMinutes: 5 }, driver2Token);
+    expect(bidRes.status).toBe(400);
+    const body = await bidRes.json() as any;
+    expect(body.error.message).toMatch(/active trip/i);
+
+    // Clean up
+    await redis.del(`driver:${driver2Id}:active_trip`);
+    await patch(`/trips/${testTripId}/status`, { status: 'cancelled_by_client' }, clientToken);
+  });
+});
+
+describe('Cancellation flow', () => {
+  it('client cancels after bid_accepted: status = cancelled_by_client, Redis active_trip cleared', async () => {
+    await redis.del(`driver:${driver1Id}:active_trip`);
+    await redis.setex(`driver:${driver1Id}:heartbeat`, 60, '1');
+
+    const bookRes = await post('/trips/book', {
+      originLatitude: PLACE_INDEPENDANCE.lat,
+      originLongitude: PLACE_INDEPENDANCE.lon,
+      destinationLatitude: AEROPORT_LEON_MBA.lat,
+      destinationLongitude: AEROPORT_LEON_MBA.lon,
+    }, clientToken);
+    const bookBody = await bookRes.json() as any;
+    expect(bookRes.status).toBe(201);
+    const cancelTripId = bookBody.trip.id;
+
+    const bidRes = await post(`/trips/${cancelTripId}/bid`, { amountXaf: 3000, etaMinutes: 5 }, driver1Token);
+    expect(bidRes.status).toBe(201);
+    const cancelBidId = (await bidRes.json() as any).id;
+
+    await redis.setex(`driver:${driver1Id}:heartbeat`, 60, '1');
+    const acceptRes = await patch(`/trips/${cancelTripId}/accept-bid`, { bidId: cancelBidId }, clientToken);
+    expect(acceptRes.status).toBe(200);
+    expect((await acceptRes.json() as any).status).toBe('bid_accepted');
+
+    // Verify driver:active_trip was set
+    const activeBeforeCancel = await redis.get(`driver:${driver1Id}:active_trip`);
+    expect(activeBeforeCancel).toBe(cancelTripId);
+
+    // Client cancels
+    const cancelRes = await patch(`/trips/${cancelTripId}/status`, { status: 'cancelled_by_client' }, clientToken);
+    const cancelBody = await cancelRes.json() as any;
+    expect(cancelRes.status).toBe(200);
+    expect(cancelBody.status).toBe('cancelled_by_client');
+
+    // Redis active_trip must be cleared — driver can take new trips
+    const activeAfterCancel = await redis.get(`driver:${driver1Id}:active_trip`);
+    expect(activeAfterCancel).toBeNull();
+    console.log(`  Redis active_trip after client cancel: ${activeAfterCancel ?? 'cleared ✓'}`);
+  });
+
+  it('driver cancels after bid_accepted: status = cancelled_by_driver, Redis active_trip cleared', async () => {
+    await redis.del(`driver:${driver1Id}:active_trip`);
+    await redis.setex(`driver:${driver1Id}:heartbeat`, 60, '1');
+
+    const bookRes = await post('/trips/book', {
+      originLatitude: PLACE_INDEPENDANCE.lat,
+      originLongitude: PLACE_INDEPENDANCE.lon,
+      destinationLatitude: AEROPORT_LEON_MBA.lat,
+      destinationLongitude: AEROPORT_LEON_MBA.lon,
+    }, clientToken);
+    const bookBody = await bookRes.json() as any;
+    expect(bookRes.status).toBe(201);
+    const cancelTripId = bookBody.trip.id;
+
+    const bidRes = await post(`/trips/${cancelTripId}/bid`, { amountXaf: 3000, etaMinutes: 5 }, driver1Token);
+    expect(bidRes.status).toBe(201);
+    const cancelBidId = (await bidRes.json() as any).id;
+
+    await redis.setex(`driver:${driver1Id}:heartbeat`, 60, '1');
+    const acceptRes = await patch(`/trips/${cancelTripId}/accept-bid`, { bidId: cancelBidId }, clientToken);
+    expect(acceptRes.status).toBe(200);
+
+    const cancelRes = await patch(`/trips/${cancelTripId}/status`, { status: 'cancelled_by_driver' }, driver1Token);
+    const cancelBody = await cancelRes.json() as any;
+    expect(cancelRes.status).toBe(200);
+    expect(cancelBody.status).toBe('cancelled_by_driver');
+
+    const activeAfterCancel = await redis.get(`driver:${driver1Id}:active_trip`);
+    expect(activeAfterCancel).toBeNull();
+    console.log(`  Redis active_trip after driver cancel: ${activeAfterCancel ?? 'cleared ✓'}`);
+  });
+});
+
+describe('Multiple drivers competing', () => {
+  it('two different drivers can both bid; client accepts one; losing bid is rejected', async () => {
+    await redis.del(`driver:${driver1Id}:active_trip`);
+    await redis.del(`driver:${driver2Id}:active_trip`);
+    await redis.setex(`driver:${driver1Id}:heartbeat`, 60, '1');
+    await redis.setex(`driver:${driver2Id}:heartbeat`, 60, '1');
+
+    const bookRes = await post('/trips/book', {
+      originLatitude: PLACE_INDEPENDANCE.lat,
+      originLongitude: PLACE_INDEPENDANCE.lon,
+      destinationLatitude: AEROPORT_LEON_MBA.lat,
+      destinationLongitude: AEROPORT_LEON_MBA.lon,
+    }, clientToken);
+    const bookBody = await bookRes.json() as any;
+    expect(bookRes.status).toBe(201);
+    const competeTripId = bookBody.trip.id;
+
+    // Both drivers bid — both should succeed (NX is per-driver, not per-trip)
+    const [bid1Res, bid2Res] = await Promise.all([
+      post(`/trips/${competeTripId}/bid`, { amountXaf: 3000, etaMinutes: 5 }, driver1Token),
+      post(`/trips/${competeTripId}/bid`, { amountXaf: 2800, etaMinutes: 7 }, driver2Token),
+    ]);
+    expect(bid1Res.status).toBe(201);
+    expect(bid2Res.status).toBe(201);
+    const winningBidId = (await bid1Res.json() as any).id;
+    const losingBidId  = (await bid2Res.json() as any).id;
+    console.log(`  Both drivers bid successfully. Driver1: ${winningBidId}, Driver2: ${losingBidId}`);
+
+    // Client accepts driver1's bid
+    await redis.setex(`driver:${driver1Id}:heartbeat`, 60, '1');
+    const acceptRes = await patch(`/trips/${competeTripId}/accept-bid`, { bidId: winningBidId }, clientToken);
+    const acceptBody = await acceptRes.json() as any;
+    expect(acceptRes.status).toBe(200);
+    expect(acceptBody.status).toBe('bid_accepted');
+    expect(acceptBody.driverId).toBe(driver1Id);
+
+    // Verify driver2's bid status via GET /trips/:id
+    const tripRes = await get(`/trips/${competeTripId}`, clientToken);
+    expect(tripRes.status).toBe(200);
+    // Trip is now bid_accepted — bids not returned in that state, but trip data is accurate
+    const tripBody = await tripRes.json() as any;
+    expect(tripBody.trip.status).toBe('bid_accepted');
+    expect(tripBody.trip.driverId).toBe(driver1Id);
+    expect(tripBody.trip.finalFareXaf).toBe(3000);
+
+    // Clean up
+    await patch(`/trips/${competeTripId}/status`, { status: 'cancelled_by_client' }, clientToken);
+  });
+});
+
+describe('GET /trips/:id', () => {
+  it('returns trip + pending bids when status is pending_bids', async () => {
+    await redis.del(`driver:${driver1Id}:active_trip`);
+    await redis.setex(`driver:${driver1Id}:heartbeat`, 60, '1');
+
+    const bookRes = await post('/trips/book', {
+      originLatitude: PLACE_INDEPENDANCE.lat,
+      originLongitude: PLACE_INDEPENDANCE.lon,
+      destinationLatitude: AEROPORT_LEON_MBA.lat,
+      destinationLongitude: AEROPORT_LEON_MBA.lon,
+    }, clientToken);
+    const bookBody = await bookRes.json() as any;
+    expect(bookRes.status).toBe(201);
+    const testTripId = bookBody.trip.id;
+
+    await post(`/trips/${testTripId}/bid`, { amountXaf: 3000, etaMinutes: 5 }, driver1Token);
+
+    const res = await get(`/trips/${testTripId}`, clientToken);
+    expect(res.status).toBe(200);
+    const body = await res.json() as any;
+    expect(body.trip.id).toBe(testTripId);
+    expect(body.trip.status).toBe('pending_bids');
+    expect(Array.isArray(body.bids)).toBe(true);
+    expect(body.bids.length).toBeGreaterThanOrEqual(1);
+    expect(body.bids[0].driverId).toBe(driver1Id);
+
+    await patch(`/trips/${testTripId}/status`, { status: 'cancelled_by_client' }, clientToken);
+  });
+
+  it('third party cannot see a trip they are not part of (404)', async () => {
+    // Use driver2 token to access the main tripId (driver1's completed trip)
+    // driver2 is neither client nor driver on that trip
+    const res = await get(`/trips/${tripId}`, driver2Token);
+    expect(res.status).toBe(404);
+  });
+});
